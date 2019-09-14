@@ -5,6 +5,7 @@ import scipy.io as io
 import gzip
 import math
 import os
+import re
 import scipy
 
 def get_bncfreq(subdir = '\\BNC\\', file = 'all.al.gz', n_fields = 4):
@@ -38,17 +39,20 @@ class DataFrameLoader:
         DataFrame loader object for ZuCo
     """
     
-    def __init__(self, task:str, subject:int):
+    def __init__(self, task:str, subject:int, level:str):
         tasks = ['task1', 'task2', 'task3']
         if task not in tasks:
-            raise Exception('task can only be one of "task1", "task2", or "task3"')
+            raise Exception('Task can only be one of "task1", "task2", or "task3"')
         else:
             self.task = tasks
         subjects = list(range(12))
         if subject not in subjects:
-            raise Exception('subject must be an integer value between 0 - 11')
+            raise Exception('Access subject data with an integer value between 0 - 11')
         else:
             self.subject = subject
+        levels = ['sentence', 'word']
+        if level not in levels:
+            raise Exception('Data can only be processed on sentence or word level')
         
     def __call__(self):
         return mk_dataframe(self)
@@ -58,25 +62,59 @@ class DataFrameLoader:
             Args: Task number ("task1", "task2", "task3") , test subject (0-11)
             Return: DataFrame with features (i.e., attributes) on word level
         """
+        bnc_freq = get_bncfreq()
         files = get_matfiles(self.task)
         data = io.loadmat(files[self.subject], squeeze_me=True, struct_as_record=False)['sentenceData']
+        
+        if self.level == 'sentence':
+            fields = ['SentLen', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 'FFD', 'SFD', 
+                      'GPT', 'BNCFreq']
+            features = np.zeros((len(data), len(fields)))
 
-        n_words = sum([len(sent.word) for sent in data])    
-        fields = list(set(field for sent in data for word in sent.word for field in word._fieldnames\
-                     if not field.startswith('raw')))
-        fields = sorted(fields, reverse=True)
+        elif self.level == 'word':
+            n_words = sum([len(sent.word) for sent in data])    
+            fields = list(set(field for sent in data for word in sent.word for field in word._fieldnames\
+                         if not field.startswith('raw')))
+            fields = sorted(fields, reverse=True)
+            fields.insert(0, 'word_id')
+            fields.insert(0, 'sent_id')
+            df = pd.DataFrame(index=range(n_words), columns=[fields])
+            k = 0
 
-        fields.insert(0, 'word_id')
-        fields.insert(0, 'sent_id')
-
-        df = pd.DataFrame(index=range(n_words), columns=[fields])
-        k = 0
         for i, sent in enumerate(data):
             for j, word in enumerate(sent.word):
-                df.iloc[k, 0] = str(i) + '_NR' if task=='task1' or task=='task2' else str(i) + '_TSR'
-                df.iloc[k, 1] = j
-                df.iloc[k, 2:] = [getattr(word, field) if hasattr(word, field) else np.nan\
-                                  for field in fields[2:]]
-                k += 1
+                if level == 'sentence':
+                    features[i,1:-1] += [getattr(word, field) if hasattr(word, field)\
+                                    and not isinstance(getattr(word, field), np.ndarray) else\
+                                    0 for field in fields[1:-1]]
+                    token = re.sub('[^\w\s]', '', word.content)
+                    #TODO: figure out whether divsion by 100 leads to log = -inf 
+                    features[i,-1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
+                elif level == 'word:
+                    df.iloc[k, 0] = str(i) + '_NR' if task=='task1' or task=='task2' else str(i) + '_TSR'
+                    df.iloc[k, 1] = j
+                    df.iloc[k, 2:] = [getattr(word, field) if hasattr(word, field) else np.nan\
+                                      for field in fields[2:]]
+                    k += 1
 
+            if level == 'sentence':
+                features[i, 0] = len(sent.word)
+                features[i, 1:] /= len(sent.word)
+                
+        if level == 'sentence':
+            # remove all rows with -inf or inf values (if data matrix contains any)
+            features = self.check_inf(features)
+            # normalize data featurewise
+            features = np.array([feat / max(feat) for i, feat in enumerate(features.T)])
+            df = pd.DataFrame(data=features.T, index=range(features.shape[1]), columns=[fields])
+            
         return df
+    
+    @staticmethod
+    def check_inf(features):
+        pop_idx = 0
+        for i, feat in enumerate(features):
+            if True in np.isneginf(feat) or True in np.isinf(feat):
+                features = np.delete(features, i-pop_idx, axis=0)
+                pop_idx += 1
+        return features
