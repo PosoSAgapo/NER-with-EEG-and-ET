@@ -1,10 +1,29 @@
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 import scipy.io as io
+import gzip
+import math
 import os
 import scipy
 
-def get_files(task:str, subdir = '\\results_zuco\\'):
+def get_bncfreq(subdir = '\\BNC\\', file = 'all.al.gz', n_fields = 4):
+    """
+        Args: British National Corpus word frequency list;
+              four fields per line (0: freq, 1: word, 2: pos, 4 :n_files the word occurs in)
+        Return: FreqDict for BNC
+    """
+    bnc_freq = defaultdict(float)
+    path = os.getcwd() + subdir
+    # unzip automatically and make sure you don't read in binary mode (-> 'rt' instead of 'rb')
+    with gzip.open(os.path.join(path, file), 'rt') as file:
+        bnc_freqlist = list(map(lambda el: el.split(), file.readlines()[1:]))
+        for line in bnc_freqlist:
+            if len(line) == n_fields:
+                bnc_freq[line[1]] += float(line[0])
+        return bnc_freq
+
+def get_matfiles(task:str, subdir = '\\results_zuco\\'):
     """
         Args: Task number ("task1", "task2", "task3") plus sub-directory
         Return: 12 matlab files (one per subject) for given task
@@ -39,7 +58,7 @@ class DataFrameLoader:
             Args: Task number ("task1", "task2", "task3") , test subject (0-11)
             Return: DataFrame with features (i.e., attributes) on word level
         """
-        files = get_files(self.task)
+        files = get_matfiles(self.task)
         data = io.loadmat(files[self.subject], squeeze_me=True, struct_as_record=False)['sentenceData']
 
         n_words = sum([len(sent.word) for sent in data])    
