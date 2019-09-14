@@ -61,3 +61,4 @@ task_materials/sentiment_labels_task1.csv
 Preprocess_data.ipynb
 .ipynb_checkpoints/data_preprocessing-checkpoint.ipynb
 .ipynb_checkpoints/Preprocess_data-checkpoint.ipynb
+BNC/all.al.gz
