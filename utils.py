@@ -53,7 +53,7 @@ class DataTransformer:
             self.level = level
         else:
             raise Exception('Data can only be processed on sentence or word level')            
-        feature_scalings = ['min-max', 'mean-norm', 'standard']
+        feature_scalings = ['min-max', 'mean-norm', 'standard', 'raw']
         if scaling in feature_scalings:
             self.scaling = scaling
         else:
@@ -191,7 +191,10 @@ class DataTransformer:
                                   getattr(df,field).values.std() for field in fields[3:]]
                 
         if self.level == 'sentence':
-            df = pd.DataFrame(data=features.T, index=range(features.shape[1]), columns=[fields])
+            if self.scaling == 'raw':
+                df = pd.DataFrame(data=features, index=range(features.shape[0]), columns=[fields])
+            else:
+                df = pd.DataFrame(data=features.T, index=range(features.shape[1]), columns=[fields])
             df.iloc[:,:-1].fillna(0, inplace=True)
             df.iloc[:,-1].fillna(getattr(df,fields[-1]).values.min(), inplace=True)    
            
@@ -205,3 +208,15 @@ class DataTransformer:
                 features = np.delete(features, idx-pop_idx, axis=0)
                 pop_idx += 1
         return features
+    
+    
+def split_data(sbjs): 
+    """
+        Args: Data per sbj on sentence level for task 1
+        Purpose: Function is necessary to control for order effects (only relevant for Task 1 (NR))
+    """
+    first_half, second_half = [], []
+    for sbj in sbjs:
+        first_half.append(sbj[:len(sbj)//2])
+        second_half.append(sbj[len(sbj)//2:])
+    return first_half, second_half
