@@ -62,3 +62,5 @@ Preprocess_data.ipynb
 .ipynb_checkpoints/data_preprocessing-checkpoint.ipynb
 .ipynb_checkpoints/Preprocess_data-checkpoint.ipynb
 BNC/all.al.gz
+__pycache__/utils.cpython-37.pyc
+.ipynb_checkpoints/data_exploration-checkpoint.ipynb
