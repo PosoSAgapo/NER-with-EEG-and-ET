@@ -110,8 +110,7 @@ class DataTransformer:
             elif self.task == 'task3' and subject == 7:
                 n_words = sum([len(sent.word) for i, sent in enumerate(data) if i < 359])
             elif self.task == 'task3' and subject == 11:
-                n_words = sum([len(sent.word) for i, sent in enumerate(data)\
-                               if i < 270 or (i > 314 and i < 362) or i > 406])
+                n_words = sum([len(sent.word) for i, sent in enumerate(data) if i < 270 or (i > 313 and i < 362)])
             else:
                 n_words = sum([len(sent.word) for sent in data])
             fields = ['Sent_ID', 'Word_ID', 'Word', 'nFixations', 'meanPupilSize', 
