@@ -40,9 +40,9 @@ def plot_fix(mean_fixations_t2, mean_fixations_t3):
     ax[0].set_title("Mean number of fixations per word per subject", fontsize=11)
 
     boxplot = ax[1].boxplot([mean_fixations_t2, mean_fixations_t3], showmeans=True,
-               labels=['First Half', 'Second Half'], meanline=True)
+               labels=['NR', 'TSR'], meanline=True)
     ax[1].set_xticks(ticks=np.arange(1, 3))
-    ax[1].set_xticklabels(labels=['First half', 'Second half'])
+    ax[1].set_xticklabels(labels=['NR', 'TSR'])
     ax[1].set_ylabel("Mean Fixations (frequency)")
     ax[1].set_title("Mean number of fixations per word per subject", fontsize=11)
     show_means(ax[1], boxplot)
@@ -63,9 +63,9 @@ def plot_omissions(mean_omissions_t2, mean_omissions_t3):
     ax[0].set_title("Mean omission rate on sentence level", fontsize=11)
 
     boxplot = ax[1].boxplot([mean_omissions_t2, mean_omissions_t3], showmeans=True,
-               labels=['First Half', 'Second Half'], meanline=True)
+               labels=['NR', 'TSR'], meanline=True)
     ax[1].set_xticks(ticks=np.arange(1, 3))
-    ax[1].set_xticklabels(labels=['First half', 'Second half'])
+    ax[1].set_xticklabels(labels=['NR', 'TSR'])
     ax[1].set_ylabel("Proportion")
     ax[1].set_title("Mean omission rate on sentence level", fontsize=11)
     show_means(ax[1], boxplot)
@@ -85,9 +85,9 @@ def plot_gd(mean_gd_t2, mean_gd_t3):
     ax[0].set_title("Mean gaze duration per word", fontsize=11)
 
     boxplot = ax[1].boxplot([mean_gd_t2, mean_gd_t3], showmeans=True,
-               labels=['First Half', 'Second Half'], meanline=True)
+               labels=['NR', 'TSR'], meanline=True)
     ax[1].set_xticks(ticks=np.arange(1, 3))
-    ax[1].set_xticklabels(labels=['First half', 'Second half'])
+    ax[1].set_xticklabels(labels=['NR', 'TSR'])
     ax[1].set_ylabel("Mean GD (ms)")
     ax[1].set_title("Mean gaze duration per word", fontsize=11)
     show_means(ax[1], boxplot)
@@ -107,9 +107,9 @@ def plot_trt(mean_trt_t2, mean_trt_t3):
     ax[0].set_title("Mean total reading time per word", fontsize=11)
 
     boxplot = ax[1].boxplot([mean_trt_t2, mean_trt_t3], showmeans=True,
-               labels=['First Half', 'Second Half'], meanline=True)
+               labels=['NR', 'TSR'], meanline=True)
     ax[1].set_xticks(ticks=np.arange(1, 3))
-    ax[1].set_xticklabels(labels=['First half', 'Second half'])
+    ax[1].set_xticklabels(labels=['NR', 'TSR'])
     ax[1].set_ylabel("Mean TRT (ms)")
     ax[1].set_title("Mean total reading time per word", fontsize=11)
     show_means(ax[1], boxplot)
@@ -130,9 +130,9 @@ def plot_ffd(mean_ffd_t2, mean_ffd_t3):
     ax[0].set_title("Mean first fixation duration per word", fontsize=11)
 
     boxplot = ax[1].boxplot([mean_ffd_t2, mean_ffd_t3], showmeans=True,
-               labels=['First Half', 'Second Half'], meanline=True)
+               labels=['NR', 'TSR'], meanline=True)
     ax[1].set_xticks(ticks=np.arange(1, 3))
-    ax[1].set_xticklabels(labels=['First half', 'Second half'])
+    ax[1].set_xticklabels(labels=['NR', 'TSR'])
     ax[1].set_ylabel("Mean FFD (ms)")
     ax[1].set_title("Mean first fixation duration per word", fontsize=11)
     show_means(ax[1], boxplot)
