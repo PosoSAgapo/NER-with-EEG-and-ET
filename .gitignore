@@ -64,3 +64,5 @@ Preprocess_data.ipynb
 BNC/all.al.gz
 __pycache__/utils.cpython-37.pyc
 .ipynb_checkpoints/data_exploration-checkpoint.ipynb
+utils_ZuCo.py
+__pycache__/plot_funcs.cpython-37.pyc

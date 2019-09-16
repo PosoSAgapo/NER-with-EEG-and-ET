@@ -11,7 +11,7 @@ import scipy
 def get_bncfreq(subdir = '\\BNC\\', file = 'all.al.gz', n_fields = 4):
     """
         Args: British National Corpus word frequency list;
-              four fields per line (0: freq, 1: word, 2: pos, 4: n_files the word occurs in)
+              four fields per line (0: freq, 1: word, 2: POS, 4: n_files the word occurs in)
         Return: FreqDict for BNC
     """
     bnc_freq = defaultdict(float)
@@ -36,12 +36,12 @@ def get_matfiles(task:str, subdir = '\\results_zuco\\'):
 
 class DataTransformer:
     """
-        Transforms ET and EEG data to use for further analysis (per test subject)
+        Transforms ET (and EEG data) to use for further analysis (per test subject)
     """
     
-    def __init__(self, task:str, level:str, scaling='min-max'):
+    def __init__(self, task:str, level:str, scaling='min-max', fillna='zeros'):
         """
-            Args: Task ("task1", "task2", or "task3"), Data Level, Scaling Technique
+            Args: task ("task1", "task2", or "task3"), data level, scaling technique, how to treat NaNs
         """
         tasks = ['task1', 'task2', 'task3']
         if task in tasks:
@@ -52,12 +52,18 @@ class DataTransformer:
         if level in levels:
             self.level = level
         else:
-            raise Exception('Data can only be processed on sentence or word level')            
+            raise Exception('Data can only be processed on sentence or word level')
+        #display raw (absolut) values or normalize data according to specified feature scaling technique
         feature_scalings = ['min-max', 'mean-norm', 'standard', 'raw']
         if scaling in feature_scalings:
             self.scaling = scaling
         else:
             raise Exception('Features must either be min-max scaled, mean-normalized or standardized')
+        fillnans = ['zeros', 'mean', 'min']
+        if fillna in fillnans:
+            self.fillna = fillna
+        else:
+            raise Exception('Missing values should be replaced with zeros, the mean or min per feature')
     
     def __call__(self, subject:int):
         """
@@ -161,8 +167,17 @@ class DataTransformer:
         #handle -inf, inf and NaN values
         if self.level == 'sentence': 
             features = self.check_inf(features)
+            
         elif self.level == 'word':
-            df.iloc[:,:-1].fillna(0, inplace=True)
+            if self.fillna == 'zeros':
+                df.iloc[:,:-1].fillna(0, inplace=True)
+            elif self.fillna == 'min':
+                for i, field in enumerate(fields[:-1]):
+                    df.iloc[:,i].fillna(getattr(df, field).values.min(), inplace=True)
+            elif self.fillna == 'mean':
+                for i, field in enumerate(fields[:-1]):
+                    df.iloc[:,i].fillna(getattr(df, field).values.mean(), inplace=True)
+                    
             df.iloc[:,-1].fillna(getattr(df,fields[-1]).values.min(), inplace=True)    
             df.replace([np.inf, -np.inf], np.nan).dropna(axis=0, inplace=True)
 
@@ -195,7 +210,15 @@ class DataTransformer:
                 df = pd.DataFrame(data=features, index=range(features.shape[0]), columns=[fields])
             else:
                 df = pd.DataFrame(data=features.T, index=range(features.shape[1]), columns=[fields])
-            df.iloc[:,:-1].fillna(0, inplace=True)
+                
+            if self.fillna == 'zeros':
+                df.iloc[:,:-1].fillna(0, inplace=True)
+            elif self.fillna == 'min':
+                for i, field in enumerate(fields[:-1]):
+                    df.iloc[:,i].fillna(getattr(df, field).values.min(), inplace=True)
+            elif self.fillna == 'mean':
+                for i, field in enumerate(fields[:-1]):
+                    df.iloc[:,i].fillna(getattr(df, field).values.mean(), inplace=True)
             df.iloc[:,-1].fillna(getattr(df,fields[-1]).values.min(), inplace=True)    
            
         return df
