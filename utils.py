@@ -1,4 +1,3 @@
-from collections import defaultdict
 import numpy as np
 import pandas as pd
 import scipy.io as io
@@ -7,6 +6,10 @@ import math
 import os
 import re
 import scipy
+
+from collections import defaultdict
+from scipy.stats import pearsonr, ttest_rel
+
 
 def get_bncfreq(subdir = '\\BNC\\', file = 'all.al.gz', n_fields = 4):
     """
@@ -105,7 +108,7 @@ class DataTransformer:
             elif self.task == 'task3' and subject == 3:
                 n_words = sum([len(sent.word) for i, sent in enumerate(data) if i < 178 or i > 224])
             elif self.task == 'task3' and subject == 7:
-                n_words = sum([len(sent.word) for i, sent in enumerate(data) if i < 314 or i > 361])
+                n_words = sum([len(sent.word) for i, sent in enumerate(data) if i < 359])
             elif self.task == 'task3' and subject == 11:
                 n_words = sum([len(sent.word) for i, sent in enumerate(data)\
                                if i < 270 or (i > 314 and i < 362) or i > 406])
@@ -115,40 +118,35 @@ class DataTransformer:
                       'GD', 'TRT', 'FFD', 'SFD', 'GPT', 'WordLen', 'BNCFreq']
             df = pd.DataFrame(index=range(n_words), columns=[fields])
             k = 0
-
+        
+        idx = 0
         for i, sent in enumerate(data):
-            if self.task == 'task1' and subject == 2:
-                if (i >= 150 and i <= 249) or i == 399:
-                    continue
-            elif self.task == 'task2' and subject == 6:
-                if i < 49:
-                    continue
-            elif self.task == 'task2' and subject == 11:
-                if i >= 50 and i <= 99:
-                    continue
-            elif self.task == 'task3' and subject == 3:
-                if i >= 178 and i <= 224:
-                    continue
-            elif self.task == 'task3' and subject == 7:
-                if i >= 314 and i <= 361:
-                    continue
-            elif self.task == 'task3' and subject == 11:
-                if (i >= 270 and i <= 313) or (i >= 362 and i <= 406):
-                    continue
+            if (self.task == 'task1' and subject == 2) and ((i >= 150 and i <= 249) or i == 399):
+                continue
+            elif (self.task == 'task2' and subject == 6) and (i <= 49):
+                continue
+            elif (self.task == 'task2' and subject == 11) and (i >= 50 and i <= 99):
+                continue
+            elif (self.task == 'task3' and subject == 3) and (i >= 178 and i <= 224):
+                continue
+            elif (self.task == 'task3' and subject == 7) and (i >= 359):
+                continue
+            elif (self.task == 'task3' and subject == 11) and ((i >= 270 and i <= 313) or (i >= 362 and i <= 406)):
+                continue
             else:
                 for j, word in enumerate(sent.word):
                     token = re.sub('[^\w\s]', '', word.content)
                     #lowercase words at the beginning of the sentence only
                     token = token.lower() if j == 0 else token 
                     if self.level == 'sentence':
-                        features[i, 2:-1] += [getattr(word, field) if hasattr(word, field)\
+                        features[idx, 2:-1] += [getattr(word, field) if hasattr(word, field)\
                                         and not isinstance(getattr(word, field), np.ndarray) else\
                                         0 for field in fields[2:-1]]
                         #TODO: figure out whether divsion by 100 leads to -inf values after log computation 
-                        features[i, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
+                        features[idx, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
                     elif self.level == 'word':
-                        df.iloc[k, 0] = str(i)+'_NR' if self.task=='task1' or self.task=='task2'\
-                                        else str(i)+'_TSR'
+                        df.iloc[k, 0] = str(idx)+'_NR' if self.task=='task1' or self.task=='task2'\
+                                        else str(idx)+'_TSR'
                         df.iloc[k, 1] = j
                         df.iloc[k, 2] = token
                         df.iloc[k, 3:-2] = [getattr(word, field) if hasattr(word, field)\
@@ -160,9 +158,11 @@ class DataTransformer:
                         k += 1
 
                 if self.level == 'sentence':
-                    features[i, 0] = len(sent.word)
-                    features[i, 1] = sent.omissionRate
-                    features[i, 2:] /= len(sent.word)
+                    features[idx, 0] = len(sent.word)
+                    features[idx, 1] = sent.omissionRate
+                    features[idx, 2:] /= len(sent.word)
+                
+                idx += 1
 
         #handle -inf, inf and NaN values
         if self.level == 'sentence': 
@@ -243,3 +243,38 @@ def split_data(sbjs):
         first_half.append(sbj[:len(sbj)//2])
         second_half.append(sbj[len(sbj)//2:])
     return first_half, second_half
+
+def corr_mat(data):
+    features = ['SentLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
+                'FFD', 'GPT', 'BNCFreq']
+    corr_mat = np.zeros((len(data), len(data)))
+    for i, feat_x in enumerate(data):
+        for j, feat_y in enumerate(data):
+            corr_mat[i, j] = pearsonr(feat_x, feat_y)[0]
+    return pd.DataFrame(corr_mat, index = features, columns = features)
+
+def compute_means(task):
+    sentlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq = [], [], [], [], [], [], [], [], []
+    for sbj in task:
+        sentlen.append(sbj.SentLen.values.mean())
+        omissions.append(sbj.omissionRate.values.mean())
+        fixations.append(sbj.nFixations.values.mean())
+        pupilsize.append(sbj.meanPupilSize.values.mean())
+        gd.append(sbj.GD.values.mean())
+        trt.append(sbj.TRT.values.mean())
+        ffd.append(sbj.FFD.values.mean())
+        gpt.append(sbj.GPT.values.mean())
+        bncfreq.append(sbj.BNCFreq.values.mean())
+    return sentlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq
+
+def compute_allvals(task):
+    sentlens = [val[0] for sbj in task for val in sbj.SentLen.values]
+    omissions = [val[0] for sbj in task for val in sbj.omissionRate.values]
+    fixations = [val[0] for sbj in task for val in sbj.nFixations.values]
+    pupilsize = [val[0] for sbj in task for val in sbj.meanPupilSize.values]
+    gd = [val[0] for sbj in task for val in sbj.GD.values]
+    trt = [val[0] for sbj in task for val in sbj.TRT.values]
+    ffd = [val[0] for sbj in task for val in sbj.FFD.values]
+    gpt = [val[0] for sbj in task for val in sbj.GPT.values]
+    bnc_freqs = [val[0] for sbj in task for val in sbj.BNCFreq.values]
+    return sentlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
