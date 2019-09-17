@@ -85,7 +85,7 @@ class DataTransformer:
         data = io.loadmat(files[subject], squeeze_me=True, struct_as_record=False)['sentenceData']
         
         if self.level == 'sentence':
-            fields = ['SentLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
+            fields = ['SentLen', 'MeanWordLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
                       'FFD', 'GPT', 'BNCFreq']
             if self.task == 'task1' and subject == 2:
                 features = np.zeros((len(data)-101, len(fields)))
@@ -135,17 +135,19 @@ class DataTransformer:
             elif (self.task == 'task3' and subject == 11) and ((i >= 270 and i <= 313) or (i >= 362 and i <= 406)):
                 continue
             else:
-                nwords_fixated = 0
+                n_words_fixated = 0
+                total_word_len = 0
                 for j, word in enumerate(sent.word):
                     token = re.sub('[^\w\s]', '', word.content)
                     #lowercase words at the beginning of the sentence only
-                    token = token.lower() if j == 0 else token 
+                    token = token.lower() if j == 0 else token
+                    total_word_len += len(token)
                     if self.level == 'sentence':
                         word_features = [getattr(word, field) if hasattr(word, field)\
                                          and not isinstance(getattr(word, field), np.ndarray) else\
-                                         0 for field in fields[2:-1]]
-                        features[idx, 2:-1] += word_features
-                        nwords_fixated += 0 if (len(set(word_features)) == 1 and next(iter(set(word_features))) == 0) else 1
+                                         0 for field in fields[3:-1]]
+                        features[idx, 3:-1] += word_features
+                        n_words_fixated += 0 if (len(set(word_features)) == 1 and next(iter(set(word_features))) == 0) else 1
                         
                         #NOTE: we have to divide bnc freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         features[idx, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
@@ -164,10 +166,13 @@ class DataTransformer:
                         k += 1
 
                 if self.level == 'sentence':
-                    features[idx, 0] = len(sent.word)
-                    features[idx, 1] = sent.omissionRate
+                    sent_len = len(sent.word)
+                    features[idx, 0] = sent_len
+                    # divide total number of characters in sent by number of words in sent to get mean word len per sent
+                    features[idx, 1] = total_word_len / sent_len
+                    features[idx, 2] = sent.omissionRate
                     # normalize ET features by number of words for which fixations were reported
-                    features[idx, 2:-1] /= nwords_fixated
+                    features[idx, 3:-1] /= n_words_fixated
                     # normalize bnc freq by number of words in sentence
                     features[idx, -1] /= len(sent.word)
                 
@@ -186,7 +191,8 @@ class DataTransformer:
             elif self.fillna == 'mean':
                 for i, field in enumerate(fields[:-1]):
                     df.iloc[:,i].fillna(getattr(df, field).values.mean(), inplace=True)
-                    
+            
+            # replace NaNs for BNC freq with min BNC freq (not with zeros)
             df.iloc[:,-1].fillna(getattr(df,fields[-1]).values.min(), inplace=True)    
             df.replace([np.inf, -np.inf], np.nan).dropna(axis=0, inplace=True)
 
@@ -254,7 +260,7 @@ def split_data(sbjs):
     return first_half, second_half
 
 def corr_mat(data, heatmap=False, mask=False):
-    features = ['SentLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
+    features = ['SentLen', 'MeanWordLen', 'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
                 'FFD', 'GPT', 'BNCFreq']
     corr_mat = np.zeros((len(data), len(data)))
     for i, feat_x in enumerate(data):
@@ -273,9 +279,10 @@ def corr_mat(data, heatmap=False, mask=False):
         return df
 
 def compute_means(task):
-    sentlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq = [], [], [], [], [], [], [], [], []
+    sentlen, wordlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq = [], [], [], [], [], [], [], [], [], []
     for sbj in task:
         sentlen.append(sbj.SentLen.values.mean())
+        wordlen.append(sbj.MeanWordLen.values.mean())
         omissions.append(sbj.omissionRate.values.mean())
         fixations.append(sbj.nFixations.values.mean())
         pupilsize.append(sbj.meanPupilSize.values.mean())
@@ -284,10 +291,11 @@ def compute_means(task):
         ffd.append(sbj.FFD.values.mean())
         gpt.append(sbj.GPT.values.mean())
         bncfreq.append(sbj.BNCFreq.values.mean())
-    return sentlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq
+    return sentlen, wordlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq
 
 def compute_allvals(task):
     sentlens = [val[0] for sbj in task for val in sbj.SentLen.values]
+    wordlens = [val[0] for sbj in task for val in sbj.MeanWordLen.values]
     omissions = [val[0] for sbj in task for val in sbj.omissionRate.values]
     fixations = [val[0] for sbj in task for val in sbj.nFixations.values]
     pupilsize = [val[0] for sbj in task for val in sbj.meanPupilSize.values]
@@ -296,7 +304,7 @@ def compute_allvals(task):
     ffd = [val[0] for sbj in task for val in sbj.FFD.values]
     gpt = [val[0] for sbj in task for val in sbj.GPT.values]
     bnc_freqs = [val[0] for sbj in task for val in sbj.BNCFreq.values]
-    return sentlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
+    return sentlens, wordlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
 
 def randomsample_paired_ttest(vals_nr:list, vals_tsr:list):
     """
