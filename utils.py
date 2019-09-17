@@ -141,7 +141,8 @@ class DataTransformer:
                         features[idx, 2:-1] += [getattr(word, field) if hasattr(word, field)\
                                         and not isinstance(getattr(word, field), np.ndarray) else\
                                         0 for field in fields[2:-1]]
-                        #TODO: figure out whether divsion by 100 leads to -inf values after log computation 
+                        #TODO: figure out whether divsion by 100 leads to -inf values after log computation
+                        #NOTE: we have to divide freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         features[idx, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
                     elif self.level == 'word':
                         df.iloc[k, 0] = str(idx)+'_NR' if self.task=='task1' or self.task=='task2'\
