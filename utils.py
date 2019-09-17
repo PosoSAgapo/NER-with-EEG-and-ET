@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import seaborn as sns 
 import scipy.io as io
 import gzip
 import math
 import os
+import random
 import re
 import scipy
 
@@ -84,7 +86,7 @@ class DataTransformer:
         
         if self.level == 'sentence':
             fields = ['SentLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
-                      'FFD', 'SFD', 'GPT', 'BNCFreq']
+                      'FFD', 'GPT', 'BNCFreq']
             if self.task == 'task1' and subject == 2:
                 features = np.zeros((len(data)-101, len(fields)))
             elif self.task == 'task2' and (subject == 6 or subject == 11):
@@ -114,7 +116,7 @@ class DataTransformer:
             else:
                 n_words = sum([len(sent.word) for sent in data])
             fields = ['Sent_ID', 'Word_ID', 'Word', 'nFixations', 'meanPupilSize', 
-                      'GD', 'TRT', 'FFD', 'SFD', 'GPT', 'WordLen', 'BNCFreq']
+                      'GD', 'TRT', 'FFD', 'GPT', 'WordLen', 'BNCFreq']
             df = pd.DataFrame(index=range(n_words), columns=[fields])
             k = 0
         
@@ -133,17 +135,21 @@ class DataTransformer:
             elif (self.task == 'task3' and subject == 11) and ((i >= 270 and i <= 313) or (i >= 362 and i <= 406)):
                 continue
             else:
+                nwords_fixated = 0
                 for j, word in enumerate(sent.word):
                     token = re.sub('[^\w\s]', '', word.content)
                     #lowercase words at the beginning of the sentence only
                     token = token.lower() if j == 0 else token 
                     if self.level == 'sentence':
-                        features[idx, 2:-1] += [getattr(word, field) if hasattr(word, field)\
-                                        and not isinstance(getattr(word, field), np.ndarray) else\
-                                        0 for field in fields[2:-1]]
-                        #TODO: figure out whether divsion by 100 leads to -inf values after log computation
-                        #NOTE: we have to divide freq by 100 to get freq by million (bnc freq is computed for 100 million words)
+                        word_features = [getattr(word, field) if hasattr(word, field)\
+                                         and not isinstance(getattr(word, field), np.ndarray) else\
+                                         0 for field in fields[2:-1]]
+                        features[idx, 2:-1] += word_features
+                        nwords_fixated += 0 if (len(set(word_features)) == 1 and next(iter(set(word_features))) == 0) else 1
+                        
+                        #NOTE: we have to divide bnc freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         features[idx, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
+                        
                     elif self.level == 'word':
                         df.iloc[k, 0] = str(idx)+'_NR' if self.task=='task1' or self.task=='task2'\
                                         else str(idx)+'_TSR'
@@ -153,14 +159,17 @@ class DataTransformer:
                                             and not isinstance(getattr(word, field), np.ndarray) else\
                                             0 for field in fields[3:-2]]
                         df.iloc[k, -2] = len(token)
-                        #TODO: figure out whether divsion by 100 leads to -inf values after log computation
+                        #NOTE: we have to divide bnc freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         df.iloc[k,-1] = np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0
                         k += 1
 
                 if self.level == 'sentence':
                     features[idx, 0] = len(sent.word)
                     features[idx, 1] = sent.omissionRate
-                    features[idx, 2:] /= len(sent.word)
+                    # normalize ET features by number of words for which fixations were reported
+                    features[idx, 2:-1] /= nwords_fixated
+                    # normalize bnc freq by number of words in sentence
+                    features[idx, -1] /= len(sent.word)
                 
                 idx += 1
 
@@ -244,14 +253,24 @@ def split_data(sbjs):
         second_half.append(sbj[len(sbj)//2:])
     return first_half, second_half
 
-def corr_mat(data):
+def corr_mat(data, heatmap=False, mask=False):
     features = ['SentLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
                 'FFD', 'GPT', 'BNCFreq']
     corr_mat = np.zeros((len(data), len(data)))
     for i, feat_x in enumerate(data):
         for j, feat_y in enumerate(data):
             corr_mat[i, j] = pearsonr(feat_x, feat_y)[0]
-    return pd.DataFrame(corr_mat, index = features, columns = features)
+    df = pd.DataFrame(corr_mat, index = features, columns = features)
+    if heatmap:
+        if mask:
+            mask = np.zeros_like(corr_mat)
+            mask[np.triu_indices_from(mask)] = True
+            with sns.axes_style("white"):
+                return sns.heatmap(df, mask=mask, vmax=.3, square=True)
+        else:
+            return sns.heatmap(df, cmap="YlGnBu")
+    else:
+        return df
 
 def compute_means(task):
     sentlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq = [], [], [], [], [], [], [], [], []
@@ -278,3 +297,16 @@ def compute_allvals(task):
     gpt = [val[0] for sbj in task for val in sbj.GPT.values]
     bnc_freqs = [val[0] for sbj in task for val in sbj.BNCFreq.values]
     return sentlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
+
+def randomsample_paired_ttest(vals_nr:list, vals_tsr:list):
+    """
+        Args: feature values for NR, feature values for TSR
+        Return: p-value (computed by dependent t-test)
+    """
+    #randomly sample N sentences for each task to have equally sized list of values
+    k = min(len(vals_nr), len(vals_tsr))//2
+    random.seed(42)
+    random_samples_nr = random.sample(vals_nr, k)
+    random_sample_tsr = random.sample(vals_tsr, k)
+    p_val = ttest_rel(random_samples_nr, random_sample_tsr)[1]
+    return p_val
