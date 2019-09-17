@@ -266,7 +266,7 @@ def corr_mat(data, heatmap=False, mask=False):
             mask = np.zeros_like(corr_mat)
             mask[np.triu_indices_from(mask)] = True
             with sns.axes_style("white"):
-                return sns.heatmap(df, mask=mask, vmax=.3, square=True)
+                return sns.heatmap(df, mask=mask, cmap="YlGnBu")
         else:
             return sns.heatmap(df, cmap="YlGnBu")
     else:
