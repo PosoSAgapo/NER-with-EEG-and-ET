@@ -11,6 +11,7 @@ import scipy
 
 from collections import defaultdict
 from scipy.stats import pearsonr, ttest_rel
+from plot_funcs import hinton
 
 
 def get_bncfreq(subdir = '\\BNC\\', file = 'all.al.gz', n_fields = 4):
@@ -44,7 +45,7 @@ class DataTransformer:
         Transforms ET (and EEG data) to use for further analysis (per test subject)
     """
     
-    def __init__(self, task:str, level:str, scaling='min-max', fillna='zeros'):
+    def __init__(self, task:str, level:str, data='ET', scaling='min-max', fillna='zeros'):
         """
             Args: task ("task1", "task2", or "task3"), data level, scaling technique, how to treat NaNs
         """
@@ -58,6 +59,11 @@ class DataTransformer:
             self.level = level
         else:
             raise Exception('Data can only be processed on sentence or word level')
+        data_sources = ['ET', 'EEG']
+        if data in data_sources:
+            self.data = data
+        else:
+            raise Exception('Features can be extracted either for Eye-Tracking (ET) or EEG data')
         #display raw (absolut) values or normalize data according to specified feature scaling technique
         feature_scalings = ['min-max', 'mean-norm', 'standard', 'raw']
         if scaling in feature_scalings:
@@ -85,8 +91,14 @@ class DataTransformer:
         data = io.loadmat(files[subject], squeeze_me=True, struct_as_record=False)['sentenceData']
         
         if self.level == 'sentence':
-            fields = ['SentLen', 'MeanWordLen',  'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
-                      'FFD', 'GPT', 'BNCFreq']
+            if self.data == 'ET':
+                fields = ['SentLen', 'MeanWordLen',  'omissionRate', 'nFixations', 'meanPupilSize', 
+                          'GD', 'TRT', 'FFD', 'GPT', 'BNCFreq']
+            elif self.data == 'EEG':
+                fields = ['SentLen', 'MeanWordLen',  'omissionRate', 'mean_theta', 'mean_alpha', 'mean_beta', 'mean_gamma',
+                          'nFixations', 'meanPupilSize', 'BNCFreq',]
+                start_eeg = fields.index('mean_theta')
+            start_et = fields.index('nFixations')
             if self.task == 'task1' and subject == 2:
                 features = np.zeros((len(data)-101, len(fields)))
             elif self.task == 'task2' and (subject == 6 or subject == 11):
@@ -143,11 +155,11 @@ class DataTransformer:
                     token = token.lower() if j == 0 else token
                     total_word_len += len(token)
                     if self.level == 'sentence':
-                        word_features = [getattr(word, field) if hasattr(word, field)\
+                        et_features = [getattr(word, field) if hasattr(word, field)\
                                          and not isinstance(getattr(word, field), np.ndarray) else\
-                                         0 for field in fields[3:-1]]
-                        features[idx, 3:-1] += word_features
-                        n_words_fixated += 0 if (len(set(word_features)) == 1 and next(iter(set(word_features))) == 0) else 1
+                                         0 for field in fields[start_et:-1]]
+                        features[idx, start_et:-1] += et_features
+                        n_words_fixated += 0 if (len(set(et_features)) == 1 and next(iter(set(et_features))) == 0) else 1
                         
                         #NOTE: we have to divide bnc freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         features[idx, -1] += np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0 
@@ -171,8 +183,23 @@ class DataTransformer:
                     # divide total number of characters in sent by number of words in sent to get mean word len per sent
                     features[idx, 1] = total_word_len / sent_len
                     features[idx, 2] = sent.omissionRate
+                    if self.data == 'EEG':
+                        #NOTE: for each frequency domain, eeg values are stored in np.array (105 values for each electrode)
+                        #NOTE: first stack values per sub-domain, then average over single electrodes
+                        binned_eeg_theta = np.mean(np.vstack([getattr(sent, theta) if hasattr(sent, theta) and len(getattr(sent, theta))\
+                                                              > 0 else 0 for theta in ['mean_t1', 'mean_t2']]), axis=0)
+                        binned_eeg_alpha = np.mean(np.vstack([getattr(sent, alpha) if hasattr(sent, alpha) and len(getattr(sent, alpha))\
+                                                              > 0 else 0 for alpha in ['mean_a1', 'mean_a2']]), axis=0)
+                        binned_eeg_beta = np.mean(np.vstack([getattr(sent, beta) if hasattr(sent, beta) and len(getattr(sent, beta))\
+                                                             > 0 else 0 for beta in ['mean_b1', 'mean_b2']]), axis=0)
+                        binned_eeg_gamma = np.mean(np.vstack([getattr(sent, gamma) if hasattr(sent, gamma) and len(getattr(sent, gamma))\
+                                                              > 0 else 0 for gamma in ['mean_g1', 'mean_g2']]), axis=0)
+                        freq_domains = [binned_eeg_theta, binned_eeg_alpha, binned_eeg_beta, binned_eeg_gamma]
+                        eeg_features = np.array([np.average(freq_domain) for freq_domain in freq_domains])
+                        eeg_features[np.isnan(eeg_features)] = 0
+                        features[idx, start_eeg:start_et] = eeg_features
                     # normalize ET features by number of words for which fixations were reported
-                    features[idx, 3:-1] /= n_words_fixated
+                    features[idx, start_et:-1] /= n_words_fixated
                     # normalize bnc freq by number of words in sentence
                     features[idx, -1] /= len(sent.word)
                 
@@ -259,52 +286,79 @@ def split_data(sbjs):
         second_half.append(sbj[len(sbj)//2:])
     return first_half, second_half
 
-def corr_mat(data, heatmap=False, mask=False):
-    features = ['SentLen', 'MeanWordLen', 'omissionRate', 'nFixations', 'meanPupilSize', 'GD', 'TRT', 
-                'FFD', 'GPT', 'BNCFreq']
+def corr_mat(data, features:str, heatmap=False, mask=False, hinton_mat=False):
+    if features=='ET':
+        fields = ['SentLen', 'MeanWordLen', 'omissionRate', 'nFixations', 'meanPupilSize', 
+                  'GD', 'TRT', 'FFD', 'GPT', 'BNCFreq']
+    elif features=='EEG':
+        fields = ['SentLen', 'MeanWordLen',  'omissionRate', 'nFixations', 'meanPupilSize',
+                  'mean_theta', 'mean_alpha', 'mean_beta', 'mean_gamma', 'BNCFreq',]
     corr_mat = np.zeros((len(data), len(data)))
     for i, feat_x in enumerate(data):
         for j, feat_y in enumerate(data):
             corr_mat[i, j] = pearsonr(feat_x, feat_y)[0]
-    df = pd.DataFrame(corr_mat, index = features, columns = features)
+    df = pd.DataFrame(corr_mat, index = fields, columns = fields)
     if heatmap:
         if mask:
             mask = np.zeros_like(corr_mat)
             mask[np.triu_indices_from(mask)] = True
             with sns.axes_style("white"):
-                return sns.heatmap(df, mask=mask, cmap="YlGnBu")
+                return sns.heatmap(df, vmax=1., mask=mask, cmap="YlGnBu")
         else:
-            return sns.heatmap(df, cmap="YlGnBu")
+            return sns.heatmap(df, vmax=1., cmap="YlGnBu")
+    elif hinton_mat:
+        return hinton(df)
     else:
         return df
 
-def compute_means(task):
-    sentlen, wordlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq = [], [], [], [], [], [], [], [], [], []
+def compute_means(task, features:str):
+    sentlen, wordlen, omissions, fixations, pupilsize, bncfreq = [], [], [], [], [], []
+    if features == 'ET':
+        gd, trt, ffd, gpt = [], [], [], []
+    elif features == 'EEG':
+        mean_theta, mean_alpha, mean_beta, mean_gamma = [], [], [], []
     for sbj in task:
         sentlen.append(sbj.SentLen.values.mean())
         wordlen.append(sbj.MeanWordLen.values.mean())
         omissions.append(sbj.omissionRate.values.mean())
         fixations.append(sbj.nFixations.values.mean())
         pupilsize.append(sbj.meanPupilSize.values.mean())
-        gd.append(sbj.GD.values.mean())
-        trt.append(sbj.TRT.values.mean())
-        ffd.append(sbj.FFD.values.mean())
-        gpt.append(sbj.GPT.values.mean())
         bncfreq.append(sbj.BNCFreq.values.mean())
-    return sentlen, wordlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq
+        if features == 'ET':
+            gd.append(sbj.GD.values.mean())
+            trt.append(sbj.TRT.values.mean())
+            ffd.append(sbj.FFD.values.mean())
+            gpt.append(sbj.GPT.values.mean())
+        elif features == 'EEG':
+            mean_theta.append(sbj.mean_theta.values.mean())
+            mean_alpha.append(sbj.mean_alpha.values.mean())
+            mean_beta.append(sbj.mean_beta.values.mean())
+            mean_gamma.append(sbj.mean_gamma.values.mean())
+    if features == 'ET':
+        return sentlen, wordlen, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bncfreq
+    elif features == 'EEG':
+        return sentlen, wordlen, omissions, fixations, pupilsize, mean_theta, mean_alpha, mean_beta, mean_gamma, bncfreq
 
-def compute_allvals(task):
+
+def compute_allvals(task, features:str):
     sentlens = [val[0] for sbj in task for val in sbj.SentLen.values]
     wordlens = [val[0] for sbj in task for val in sbj.MeanWordLen.values]
     omissions = [val[0] for sbj in task for val in sbj.omissionRate.values]
     fixations = [val[0] for sbj in task for val in sbj.nFixations.values]
     pupilsize = [val[0] for sbj in task for val in sbj.meanPupilSize.values]
-    gd = [val[0] for sbj in task for val in sbj.GD.values]
-    trt = [val[0] for sbj in task for val in sbj.TRT.values]
-    ffd = [val[0] for sbj in task for val in sbj.FFD.values]
-    gpt = [val[0] for sbj in task for val in sbj.GPT.values]
     bnc_freqs = [val[0] for sbj in task for val in sbj.BNCFreq.values]
-    return sentlens, wordlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
+    if features == 'ET':
+        gd = [val[0] for sbj in task for val in sbj.GD.values]
+        trt = [val[0] for sbj in task for val in sbj.TRT.values]
+        ffd = [val[0] for sbj in task for val in sbj.FFD.values]
+        gpt = [val[0] for sbj in task for val in sbj.GPT.values]
+        return sentlens, wordlens, omissions, fixations, pupilsize, gd, trt, ffd, gpt, bnc_freqs
+    elif features == 'EEG':
+        mean_theta = [val[0] for sbj in task for val in sbj.mean_theta.values]
+        mean_alpha = [val[0] for sbj in task for val in sbj.mean_alpha.values]
+        mean_beta = [val[0] for sbj in task for val in sbj.mean_beta.values]
+        mean_gamma = [val[0] for sbj in task for val in sbj.mean_gamma.values]
+        return sentlens, wordlens, omissions, fixations, pupilsize, mean_theta, mean_alpha, mean_beta, mean_gamma, bnc_freqs
 
 def randomsample_paired_ttest(vals_nr:list, vals_tsr:list):
     """
@@ -312,9 +366,10 @@ def randomsample_paired_ttest(vals_nr:list, vals_tsr:list):
         Return: p-value (computed by dependent t-test)
     """
     #randomly sample N sentences for each task to have equally sized list of values
-    k = min(len(vals_nr), len(vals_tsr))//2
+    k = min(len(vals_nr), len(vals_tsr)) // 2
     random.seed(42)
     random_samples_nr = random.sample(vals_nr, k)
     random_sample_tsr = random.sample(vals_tsr, k)
+    #paired t-test (because we compare within subjects between tasks - subjects are always the same)
     p_val = ttest_rel(random_samples_nr, random_sample_tsr)[1]
     return p_val
