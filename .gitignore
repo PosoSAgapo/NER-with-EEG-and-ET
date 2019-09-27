@@ -72,3 +72,9 @@ __pycache__/utils_ZuCo.cpython-37.pyc
 electrodes_information/105chanlocs.csv
 electrodes_information/HCGSN_128_channel_map_EGI_plac_8403486-52_20110804.pdf
 .ipynb_checkpoints/eeg_feature_extraction-checkpoint.ipynb
+eeg_feature_extraction/alpha_features_TRT.txt
+eeg_feature_extraction/beta_features_TRT.txt
+eeg_feature_extraction/gamma_features_TRT.txt
+eeg_feature_extraction/theta_features_TRT.txt
+eeg_feature_extraction/__pycache__/extract_eeg_features.cpython-37.pyc
+eeg_feature_extraction/.ipynb_checkpoints/eeg_feature_extraction-checkpoint.ipynb

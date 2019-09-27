@@ -1,14 +1,25 @@
 import numpy as np
 import scipy.io as io
+import os
 import scipy
 
+from sklearn.metrics import accuracy_score
 from sklearn.utils import shuffle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegressionCV
-from utils import *
 
+def get_matfiles(task:str, subdir = '\\results_zuco\\'):
+    """
+        Args: Task number ("task1", "task2", "task3") plus sub-directory
+        Return: 12 matlab files (one per subject) for given task
+    """
+    path = os.getcwd() + subdir + task
+    files = [os.path.join(path,file) for file in os.listdir(path)[1:]]
+    assert len(files) == 12, 'each task must contain 12 .mat files'
+    return files
 
+#NOTE: We are now using only EEG frequencies for TRT to extract features (maybe, we should also use GD, GPT, or FFD)
 def get_eeg_freqs(task:str, sbj:int, freq_domain:str, merge:str):
     """
         Args: Task (NR vs. TSR), Test subject number, EEG frequency domain (theta, alpha, beta, gamma), Binning strategy
@@ -79,7 +90,8 @@ def clf_fit(X_train, X_test, y_train, y_test, clf, rnd_state=42):
         model = LogisticRegressionCV(cv=5, max_iter=1000, random_state=rnd_state,)
     model.fit(X_train, y_train)
     y_hat = model.predict(X_test)
-    print(model.score(X_test, y_test))
+    #print(model.score(X_test, y_test))
+    print(accuracy_score(y_test, y_hat))
     if clf == 'LogReg':
         return model.coef_
     else:
