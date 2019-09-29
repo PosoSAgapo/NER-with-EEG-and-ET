@@ -74,7 +74,7 @@ class DataTransformer:
         if fillna in fillnans:
             self.fillna = fillna
         else:
-            raise Exception('Missing values should be replaced with zeros, the mean or min per feature')
+            raise Exception('Missing values must be replaced with zeros, the mean or min per feature')
     
     def __call__(self, subject:int):
         """
@@ -169,10 +169,10 @@ class DataTransformer:
                                         else str(idx)+'_TSR'
                         df.iloc[k, 1] = j
                         df.iloc[k, 2] = token
-                        df.iloc[k, 3:-2] = [getattr(word, field) if hasattr(word, field)\
+                        df.iloc[k, 3:-2] = np.array([getattr(word, field) if hasattr(word, field)\
                                             and not isinstance(getattr(word, field), np.ndarray) else\
-                                            0 for field in fields[3:-2]]
-                        df.iloc[k, -2] = len(token)
+                                            0 for field in fields[3:-2]])
+                        df.iloc[k,-2] = len(token)
                         #NOTE: we have to divide bnc freq by 100 to get freq by million (bnc freq is computed for 100 million words)
                         df.iloc[k,-1] = np.log(bnc_freq[token]/100) if bnc_freq[token]/100 != 0 else 0
                         k += 1
