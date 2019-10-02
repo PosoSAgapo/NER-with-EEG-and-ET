@@ -41,7 +41,8 @@ def stack_eeg_features(word, all_fields:list, eeg_locs_all_freqs:list, merge:str
     #third, stack all eeg feats horizontally
     return np.hstack([eeg_freq for eeg_freq in eeg_freqs])
 
-def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, freq_domain=None, et_feat=None):
+def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=False, ner_indices=None,
+                     split_sents=False, relation_indices=None, freq_domain=None, et_feat=None):
     """
         Args: Task (NR vs. TSR); test subject number; EEG frequency domain (theta, alpha, beta, or gamma); 
               Eye-Tracking feature for which we want to extract EEG features; binning strategy; 
@@ -52,6 +53,12 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, freq_domain=N
     files = get_matfiles(task)
     data = io.loadmat(files[sbj], squeeze_me=True, struct_as_record=False)['sentenceData']
     n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float)])
+    
+    if split_sents: 
+        assert isinstance(relation_indices, list), 'If you want to split the data by relations, you must pass a list of sentence indices'
+        
+    if split_words: 
+        assert isinstance(ner_indices, list), 'If you want to split the data by named entities, you must pass a list of word indices'
     
     if n_features == 'most_important':
         fields = [['FFD_a1', 'FFD_a2'], ['GD_a1', 'GD_a2'], ['GPT_a1', 'GPT_a2'], ['TRT_a1', 'TRT_a2'],
@@ -85,14 +92,28 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, freq_domain=N
         raise ValueError('Number of features must be one of [all, most_important]')
         
     fixated = 0
-    for sent in data:
+    j = 0
+    for i, sent in enumerate(data):
         # if there is no data, skip sentence (most probably due to technical issues)
         if isinstance(sent.word, float):
             continue
         else:
+            if not split_sents:
+                pass
+            elif split_sents and i in relation_indices:
+                pass
+            elif split_sents and i not in relation_indices:
+                continue
             for word in sent.word:
-                # if there was no fixation, skip word
+                if not split_words:
+                    pass
+                elif split_words and j in ner_indices:
+                    pass
+                elif split_words and j not in ner_indices:
+                    continue
+                # if there was no fixation, skip word (we only care about words where a fixation landed)
                 if isinstance(word.nFixations, np.ndarray):
+                    j += 1
                     continue
                 else:
                     if n_features == 'most_important':
@@ -112,8 +133,43 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, freq_domain=N
                     eeg_freq[np.isnan(eeg_freq)] = 0
                     word2eeg[fixated] += eeg_freq
                     fixated += 1
+                    j += 1
     word2eeg = word2eeg[:fixated, :]
     return word2eeg
+
+
+def truncating(eeg_mat):
+    mean_len = np.mean([len(sent) for sent in eeg_mat], dtype=int)
+    eeg_mat_padded = np.zeros((eeg_mat.shape[0], mean_len), dtype=float)
+    for i, sent in enumerate(eeg_mat):
+        if len(sent) <= mean_len:
+            eeg_mat_padded[i, :len(sent)] += sent
+        else:
+            eeg_mat_padded[i, :len(sent)] += sent[:mean_len]
+    return eeg_mat_padded
+
+
+def zero_padding(eeg_mat):
+    max_len = max([len(sent) for sent in eeg_mat])
+    eeg_mat_padded = np.zeros((eeg_mat.shape[0], max_len), dtype=float)
+    for i, sent in enumerate(eeg_mat):
+        eeg_mat_padded[i, :len(sent)] += sent
+    return eeg_mat_padded
+
+def map_electrode_onto_tensor(eeg_tensor, electrode_idx):
+    return np.array(list(map(lambda sent:sent[:, electrode_idx].ravel(), eeg_tensor)))
+
+def reshape_into_tensor(eeg_data_all_sbjs, sent_lens_sbj):
+    # get eeg data per sbj (all sentences)
+    eeg_data_sbj = eeg_data_all_sbjs[:sum(sent_lens_sbj), :]
+    # split eeg data into 3D tensor (N (sentences) x D (words) x K (EEG activity in electrode X for X frequency domain))
+    eeg_data_sbj_tensor = []
+    # cumulative sent len
+    cum_sent_len = 0
+    for sent_len in sent_lens_sbj:
+        eeg_data_sbj_tensor.append(eeg_data_sbj[cum_sent_len:cum_sent_len+sent_len])
+        cum_sent_len += sent_len
+    return np.array(eeg_data_sbj_tensor)
 
 
 def mean_freq_per_sbj(task:str, freq_domain:str, merge:str, et_feature:str):
