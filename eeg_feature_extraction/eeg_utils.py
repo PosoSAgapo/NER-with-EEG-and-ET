@@ -41,8 +41,8 @@ def stack_eeg_features(word, all_fields:list, eeg_locs_all_freqs:list, merge:str
     #third, stack all eeg feats horizontally
     return np.hstack([eeg_freq for eeg_freq in eeg_freqs])
 
-def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=False, ner_indices=None,
-                     split_sents=False, relation_indices=None, freq_domain=None, et_feat=None):
+def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sents=None, held_out_indices=None, split_words=False,
+                     ner_indices=None, split_sents=False, relation_indices=None, freq_domain=None, et_feat=None):
     """
         Args: Task (NR vs. TSR); test subject number; EEG frequency domain (theta, alpha, beta, or gamma); 
               Eye-Tracking feature for which we want to extract EEG features; binning strategy; 
@@ -54,7 +54,7 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=F
     data = io.loadmat(files[sbj], squeeze_me=True, struct_as_record=False)['sentenceData']
     n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float)])
     
-    if split_sents: 
+    if split_sents:
         assert isinstance(relation_indices, list), 'If you want to split the data by relations, you must pass a list of sentence indices'
         
     if split_words: 
@@ -84,18 +84,32 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=F
             eeg_feat_1, eeg_feat_2 = et_feat + '_b1', et_feat + '_b2' 
         elif freq_domain == 'gamma':
             eeg_feat_1, eeg_feat_2 = et_feat + '_g1', et_feat + '_g2'
-        fields = [eeg_feat_1, eeg_feat_2] 
-        n_electrodes = 105    
+        fields = [eeg_feat_1, eeg_feat_2]
+        n_electrodes = 105
+        if duplicate_sents != None:
+            n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float) and sent.content in duplicate_sents])
         word2eeg = np.zeros((n_words, n_electrodes))
 
     else:
         raise ValueError('Number of features must be one of [all, most_important]')
         
     fixated = 0
-    j = 0
+    if split_words:
+        j = 0
     for i, sent in enumerate(data):
+        # don't use hold out test set for EEG feature extraction (with Random Forest)
+        if held_out_indices != None and isinstance(held_out_indices, list):
+            if i in held_out_indices:
+                continue
+        # if you want to extract most important EEG features, you have to compare sentences that occurred in both tasks
+        if duplicate_sents != None:
+            if sent.content not in duplicate_sents:
+                continue
         # if there is no data, skip sentence (most probably due to technical issues)
         if isinstance(sent.word, float):
+            if split_words:
+                sent_len = len(sent.content.split())
+                j += sent_len
             continue
         else:
             if not split_sents:
@@ -113,7 +127,8 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=F
                     continue
                 # if there was no fixation, skip word (we only care about words where a fixation landed)
                 if isinstance(word.nFixations, np.ndarray):
-                    j += 1
+                    if split_words:
+                        j += 1
                     continue
                 else:
                     if n_features == 'most_important':
@@ -133,21 +148,20 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, split_words=F
                     eeg_freq[np.isnan(eeg_freq)] = 0
                     word2eeg[fixated] += eeg_freq
                     fixated += 1
-                    j += 1
-    word2eeg = word2eeg[:fixated, :]
+                    if split_words:
+                        j += 1
+    word2eeg = word2eeg[:fixated, :] if duplicate_sents == None else word2eeg
     return word2eeg
-
 
 def truncating(eeg_mat):
     mean_len = np.mean([len(sent) for sent in eeg_mat], dtype=int)
-    eeg_mat_padded = np.zeros((eeg_mat.shape[0], mean_len), dtype=float)
+    eeg_mat_trunc = np.zeros((eeg_mat.shape[0], mean_len), dtype=float)
     for i, sent in enumerate(eeg_mat):
         if len(sent) <= mean_len:
-            eeg_mat_padded[i, :len(sent)] += sent
+            eeg_mat_trunc[i, :len(sent)] += sent
         else:
-            eeg_mat_padded[i, :len(sent)] += sent[:mean_len]
-    return eeg_mat_padded
-
+            eeg_mat_trunc[i, :len(sent)] += sent[:mean_len]
+    return eeg_mat_trunc
 
 def zero_padding(eeg_mat):
     max_len = max([len(sent) for sent in eeg_mat])
@@ -172,33 +186,43 @@ def reshape_into_tensor(eeg_data_all_sbjs, sent_lens_sbj):
     return np.array(eeg_data_sbj_tensor)
 
 
-def mean_freq_per_sbj(task:str, freq_domain:str, merge:str, et_feature:str):
-    sbjs_to_skip = [6, 11] if task == 'task2' else [3, 7, 11]
-    X = []
-    for i in range(12):
-        if i not in sbjs_to_skip:
-            X.append(get_eeg_freqs(task, i, freq_domain, et_feature, merge))
-    X_mean = np.zeros((X[0].shape[0], 105))
-    if task == 'task2':
-        D_0, D_1, D_2, D_3, D_4, D_5, D_7, D_8, D_9, D_10 = X 
-        for i, (sbj_0, sbj_1, sbj_2, sbj_3, sbj_4, sbj_5, sbj_7, sbj_8, sbj_9, sbj_10) in enumerate(zip(D_0, D_1, D_2, D_3, D_4, D_5, D_7, D_8, D_9, D_10)):
-            X_mean[i] += np.mean((sbj_0, sbj_1, sbj_2, sbj_3, sbj_4, sbj_5, sbj_7, sbj_8, sbj_9, sbj_10), axis=0)
-    elif task == 'task3':
-        D_0, D_1, D_2, D_4, D_5, D_6, D_8, D_9, D_10 = X
-        for i, (sbj_0, sbj_1, sbj_2, sbj_4, sbj_5, sbj_6, sbj_8, sbj_9, sbj_10) in enumerate(zip(D_0, D_1, D_2, D_4, D_5, D_6, D_8, D_9, D_10)):
-             X_mean[i] += np.mean((sbj_0, sbj_1, sbj_2, sbj_4, sbj_5, sbj_6, sbj_8, sbj_9, sbj_10), axis=0)
-    return X_mean
+### EEG feature extraction on word level (with Random Forest) per frequency domain per eye-tracking feature across all subjects ###
+
+# less data (and thus computationally more efficient) but maybe not as informative as stacking all sbjs (vertically)
+def mean_freq_per_sbj(task:str, freq_domain:str, merge:str, et_feature:str, held_out_indices=None, duplicate_sents=None):
+    sbjs_to_skip = [6, 11] if task == 'task2' else [3, 7, 11]    
+    eeg_feats_all_sbjs = [get_eeg_features(task=task, sbj=i, n_features='all', merge=merge, 
+                                           held_out_indices=held_out_indices, duplicate_sents=duplicate_sents, 
+                                           freq_domain=freq_domain, et_feat=et_feature) 
+                                           for i in range(12) if i not in sbjs_to_skip]
+    min_n_words_fixated = np.min([eeg_feats_sbj.shape[0] for eeg_feats_sbj in eeg_feats_all_sbjs])
+    X = list(map(lambda eeg_feats: eeg_feats[:min_n_words_fixated, :], eeg_feats_all_sbjs))
+    return np.mean(X, axis=0)
+
+# huge data set (and thus computationally not so efficient) but most probably more informative than averaging overs subjects
+def stacked_freq_per_sbj(task:str, freq_domain:str, merge:str, et_feature:str, held_out_indices=None, all_sbjs=True,
+                         duplicate_sents=None):
+    if all_sbjs:
+        stacked_eeg_feats_all_sbjs = np.vstack([get_eeg_features(task=task, sbj=i, n_features='all', merge=merge, 
+                                                held_out_indices=held_out_indices, duplicate_sents=duplicate_sents,
+                                                freq_domain=freq_domain, et_feat=et_feature) 
+                                                for i in range(12)])
+    else:
+        sbjs_to_skip = [6, 11] if task == 'task2' else [3, 7, 11]
+        stacked_eeg_feats_all_sbjs = np.vstack([get_eeg_features(task=task, sbj=i, n_features='all', merge=merge, 
+                                                held_out_indices=held_out_indices, duplicate_sents=duplicate_sents,
+                                                freq_domain=freq_domain, et_feat=et_feature) 
+                                                for i in range(12) if i not in sbjs_to_skip])
+    return stacked_eeg_feats_all_sbjs
 
 def clf_fit(X_train, X_test, y_train, y_test, clf, rnd_state=42):
     if clf == 'RandomForest':
         model = RandomForestClassifier(n_estimators=100, criterion='gini', bootstrap=False, random_state=rnd_state)
     elif clf == 'LogReg':
-        model = LogisticRegressionCV(cv=5, max_iter=1000, random_state=rnd_state,)
+        model = LogisticRegressionCV(cv=5, max_iter=1000, random_state=rnd_state)
     model.fit(X_train, y_train)
     y_hat = model.predict(X_test)
     #print(model.score(X_test, y_test))
     print(accuracy_score(y_test, y_hat))
-    if clf == 'LogReg':
-        return model.coef_
-    else:
-        return model.feature_importances_
+    if clf == 'LogReg': return model.coef_
+    else: return model.feature_importances_
