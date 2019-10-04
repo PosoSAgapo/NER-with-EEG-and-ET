@@ -67,7 +67,7 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
                   ['FFD_t1', 'FFD_t2'], ['GD_t1', 'GD_t2'], ['GPT_t1', 'GPT_t2'], ['TRT_t1', 'TRT_t2']]
         
         path = os.getcwd() + '\\eeg_feature_extraction\\' + '\\important_eeg_features\\'
-        files = [os.path.join(path, file) for file in os.listdir(path)]
+        files = [os.path.join(path, file) for file in os.listdir(path) if not file.endswith('.ipynb_checkpoints')]
         eeg_locs_all_freqs = [np.loadtxt(file, dtype=int) for file in files]
         n_et_feats = 4
         n_eeg_freqs = 8 
@@ -153,6 +153,17 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
     word2eeg = word2eeg[:fixated, :] if duplicate_sents == None else word2eeg
     return word2eeg
 
+def extract_electrodes_and_indices(eeg_electrodes:np.ndarray, eeg_locs:np.ndarray, electrodes_freq:list, k=0):
+    all_electrodes_per_freq = [eeg_electrodes[indices] for indices in eeg_locs]
+    cortex_indices_per_freq = [np.array([eeg_electrodes[indices].tolist().index(electrod)
+                                           for electrod in electrodes_freq]) for indices in eeg_locs]
+    all_cortex_electrodes_per_freq = np.array([electrodes[cortex_indices] 
+                                                 for electrodes, cortex_indices 
+                                                 in zip(all_electrodes_per_freq, cortex_indices_per_freq)]).ravel()
+    all_cortex_indices_per_freq = np.array([indices + k + int(10 * i) for i, indices 
+                                           in enumerate(cortex_indices_per_freq)]).ravel()
+    return all_cortex_electrodes_per_freq, all_cortex_indices_per_freq
+
 def truncating(eeg_mat):
     mean_len = np.mean([len(sent) for sent in eeg_mat], dtype=int)
     eeg_mat_trunc = np.zeros((eeg_mat.shape[0], mean_len), dtype=float)
@@ -186,9 +197,9 @@ def reshape_into_tensor(eeg_data_all_sbjs, sent_lens_sbj):
     return np.array(eeg_data_sbj_tensor)
 
 
-### EEG feature extraction on word level (with Random Forest) per frequency domain per eye-tracking feature across all subjects ###
+### EEG feature extraction on word level (with Random Forest) per frequency domain per Eye-Tracking feature across all subjects ###
 
-# less data (and thus computationally more efficient) but maybe not as informative as stacking all sbjs (vertically)
+# less data (and thus computationally more efficient) but maybe not as informative as stacking all sbjs (vertically) on top of each other
 def mean_freq_per_sbj(task:str, freq_domain:str, merge:str, et_feature:str, held_out_indices=None, duplicate_sents=None):
     sbjs_to_skip = [6, 11] if task == 'task2' else [3, 7, 11]    
     eeg_feats_all_sbjs = [get_eeg_features(task=task, sbj=i, n_features='all', merge=merge, 
