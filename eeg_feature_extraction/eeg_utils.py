@@ -52,7 +52,10 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
     """
     files = get_matfiles(task)
     data = io.loadmat(files[sbj], squeeze_me=True, struct_as_record=False)['sentenceData']
-    n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float)])
+    if duplicate_sents != None:
+        n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float) and sent.content in duplicate_sents])
+    else:
+        n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float)])
     
     if split_sents:
         assert isinstance(relation_indices, list), 'If you want to split the data by relations, you must pass a list of sentence indices'
@@ -86,8 +89,6 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
             eeg_feat_1, eeg_feat_2 = et_feat + '_g1', et_feat + '_g2'
         fields = [eeg_feat_1, eeg_feat_2]
         n_electrodes = 105
-        if duplicate_sents != None:
-            n_words = sum([len(sent.word) for sent in data if not isinstance(sent.word, float) and sent.content in duplicate_sents])
         word2eeg = np.zeros((n_words, n_electrodes))
 
     else:
@@ -150,7 +151,7 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
                     fixated += 1
                     if split_words:
                         j += 1
-    word2eeg = word2eeg[:fixated, :] if duplicate_sents == None else word2eeg
+    word2eeg = word2eeg if duplicate_sents != None and n_features == 'all' else word2eeg[:fixated, :]
     return word2eeg
 
 def extract_electrodes_and_indices(eeg_electrodes:np.ndarray, eeg_locs:np.ndarray, electrodes_freq:list, k=0):
