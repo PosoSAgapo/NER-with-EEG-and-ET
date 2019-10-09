@@ -154,7 +154,7 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
         if held_out_indices != None and isinstance(held_out_indices, list):
             if i in held_out_indices:
                 continue
-        # if you want to extract most important EEG features, you have to compare sentences that occurred in both tasks
+        # for data visualisation, compare EEG activity distribution for sentences that occurred in both tasks
         if duplicate_sents != None:
             if sent.content not in duplicate_sents:
                 continue
