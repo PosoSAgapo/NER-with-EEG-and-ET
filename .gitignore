@@ -99,3 +99,8 @@ eeg_feature_extraction/__pycache__/eeg_utils.cpython-37.pyc
 .ipynb_checkpoints/eeg_feature_plotting-checkpoint.ipynb
 task_materials/ner_labels_normal_reading.tsv
 *.txt
+*.json
+*.rar
+*.pyc
+.ipynb_checkpoints/task_prediction-checkpoint.ipynb
+state_dict.pt
