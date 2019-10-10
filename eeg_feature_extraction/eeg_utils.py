@@ -48,7 +48,10 @@ def get_held_out_sents(task:str):
 def load_embeddings(classification:str):
     path = os.getcwd() + '\\embeddings\\' if classification == 'binary' else os.getcwd() + '\\embeddings\\' + '\\embeddings_multi\\'
     files = [os.path.join(path, file) for file in os.listdir(path)]
-    all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
+    if classification == 'binary':
+        all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints') and not file.endswith('multi')]
+    else:
+        all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
     return all_embeddings
 
 def get_rel_labels():
@@ -276,7 +279,7 @@ def create_multiclass_word_labels(indices_rel_task:list, indices_no_rel_task:lis
     # use sbj_1 to create labels on word level since we have data for all sentences for this participant
     data_task = io.loadmat(files_task[0], squeeze_me=True, struct_as_record=False)['sentenceData']
     n_words = sum([len(sent.word) for i, sent in enumerate(data_task) if i not in held_out_sents])
-    labels = np.zeros(n_words) if task == 'task2' else np.ones(n_words) * 2
+    labels = np.zeros((n_words, 1)) if task == 'task2' else np.ones((n_words, 1)) * 2
     j = 0
     for i, sent in enumerate(data_task):
         if i not in held_out_sents:
