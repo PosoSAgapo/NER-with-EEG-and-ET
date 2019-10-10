@@ -11,8 +11,8 @@ from torch.utils.data import TensorDataset, DataLoader
 
 def loss_func(classification:str, weight=None): return nn.BCELoss() if classification == 'binary' else nn.CrossEntropyLoss(weight)
 
-def get_optim(model, lr:float, task:str):
-    return torch.optim.Adam(model.parameters(), lr=lr) if task == 'binary' else optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+def get_optim(model, lr:float):
+    return torch.optim.Adam(model.parameters(), lr=lr)
 
 def accuracy(out, yb, task:str):
     if task == 'binary':
