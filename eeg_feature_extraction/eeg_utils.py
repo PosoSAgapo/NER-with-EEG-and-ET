@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import scipy.io as io
 import os
 import scipy
@@ -44,11 +45,28 @@ def get_held_out_sents(task:str):
     held_out_sents = [np.loadtxt(file, dtype=int).tolist() for file in files]
     return list(set(held_out_sents[0])) if task == 'task2' else list(set(held_out_sents[1]))
 
-def load_embeddings():
-    path = os.getcwd() + '\\embeddings\\'
+def load_embeddings(classification:str):
+    path = os.getcwd() + '\\embeddings\\' if classification == 'binary' else os.getcwd() + '\\embeddings\\' + '\\embeddings_multi\\'
     files = [os.path.join(path, file) for file in os.listdir(path)]
     all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
     return all_embeddings
+
+def get_rel_labels():
+    # load labeled sentences
+    relation_labels_task2 = pd.read_csv('./task_materials/relations_labels_task2.csv', sep = ',')
+    relation_labels_task3 = pd.read_csv('./task_materials/relations_labels_task3.csv', sep = ';')
+    # get indices of sentences with relation labels
+    indices_relations_task2 = [idx for idx, relation in enumerate(relation_labels_task2.relation_types.values)
+                               if relation != 'NO-RELATION'] 
+    indices_no_relations_task2 = [idx for idx, relation in enumerate(relation_labels_task2.relation_types.values) 
+                                  if relation == 'NO-RELATION'] 
+    assert len(indices_relations_task2) + len(indices_no_relations_task2) == 300
+    indices_relations_task3 = [idx for idx, relation in enumerate(relation_labels_task3['relation-type'].values)
+                               if relation != 'CONTROL'] 
+    indices_no_relations_task3 = [idx for idx, relation in enumerate(relation_labels_task3['relation-type'].values)
+                                  if relation == 'CONTROL'] 
+    assert len(indices_relations_task3) + len(indices_no_relations_task3) == 407
+    return indices_relations_task2, indices_no_relations_task2, indices_relations_task3, indices_no_relations_task3
 
 ### Main EEG feature extraction helper function ###
 
@@ -160,8 +178,8 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
                 continue
         # if there is no data, skip sentence (most probably due to technical issues)
         if isinstance(sent.word, float):
-            print("No data to analyse for sentence {}".format(i))
-            print("Inspect whether you are using all subjects for current data transformation!")
+            #print("No data to analyse for sentence {}".format(i))
+            #print("Inspect whether you are using all subjects for current data transformation!")
             if split_words or dim_reduction:
                 sent_len = len(sent.content.split())
                 j += sent_len
@@ -252,7 +270,24 @@ def reshape_into_tensor(eeg_data_per_task:np.ndarray, task:str):
     eeg_seq_tensor = eeg_seq_tensor[:, :mean_len, :]
     return eeg_seq_tensor
 
-def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 'avg', n_features = 'all', k = 15):
+def create_multiclass_word_labels(indices_rel_task:list, indices_no_rel_task:list, task:str):
+    held_out_sents = get_held_out_sents(task)
+    files_task = get_matfiles(task)
+    # use sbj_1 to create labels on word level since we have data for all sentences for this participant
+    data_task = io.loadmat(files_task[0], squeeze_me=True, struct_as_record=False)['sentenceData']
+    n_words = sum([len(sent.word) for i, sent in enumerate(data_task) if i not in held_out_sents])
+    labels = np.zeros(n_words) if task == 'task2' else np.ones(n_words) * 2
+    j = 0
+    for i, sent in enumerate(data_task):
+        if i not in held_out_sents:
+            for word in sent.word:
+                if i in indices_rel_task:
+                    labels[j] += 1
+                    j += 1
+    return labels
+
+def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 'avg', n_features = 'all', k = 15,
+                       classification = 'binary'):
     """
         Args:
             feature extraction methods (i.e., Random Forest or NCA) (list),
@@ -266,19 +301,37 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
     """
     eeg_locs_all_freqs = get_eeg_locs('\\eeg_features_for_embeddings\\')
     held_out_sents_task2, held_out_sents_task3 = get_held_out_sents('task2'), get_held_out_sents('task3')
+    
+    if classification == 'multiclass':
+        indices_relations_task2, indices_no_relations_task2, indices_relations_task3, indices_no_relations_task3 = get_rel_labels()
+        # get indices for (dev) sentences with and without relations respectively
+        indices_rel_task2 = [idx for idx in indices_relations_task2 if idx not in held_out_sents_task2]
+        indices_no_rel_task2 = [idx for idx in indices_no_relations_task2 if idx not in held_out_sents_task2]
+        indices_rel_task3 = [idx for idx in indices_relations_task3 if idx not in held_out_sents_task3]
+        indices_no_rel_task3 = [idx for idx in indices_no_relations_task3 if idx not in held_out_sents_task3]
+        
     et_feature = 'TRT'
     rnd_state = 42
     embeddings = defaultdict(dict)
     for feat_extraction_method in feat_extraction_methods:
+        if classification == 'multiclass' and feat_extraction_method == 'RandomForest':
+            continue
         embeddings_task2, embeddings_task3 = [], []
         for idx, freq_domain in enumerate(freq_domains):
+            
             X_NR = eeg_freqs_across_sbj('task2', freq_domain, merge, et_feature, n_features,
                                       held_out_indices=held_out_sents_task2, all_sbjs=False,
                                       dim_reduction=True)
             X_AR = eeg_freqs_across_sbj('task3', freq_domain, merge, et_feature, n_features,
                                       held_out_indices=held_out_sents_task3, all_sbjs=False,
                                       dim_reduction=True)
-            Y_NR, Y_AR = np.zeros((X_NR.shape[0], 1)), np.ones((X_AR.shape[0], 1))
+            
+            if classification == 'multiclass':
+                Y_NR = create_multiclass_word_labels(indices_rel_task2, indices_no_rel_task2, 'task2')
+                Y_AR = create_multiclass_word_labels(indices_rel_task3, indices_no_rel_task3, 'task3')
+                
+            elif classification == 'binary':
+                Y_NR, Y_AR = np.zeros((X_NR.shape[0], 1)), np.ones((X_AR.shape[0], 1))
             
             if feat_extraction_method == 'RandomForest':
                 embeddings_task2.append(X_NR[:, eeg_locs_all_freqs[idx]])
@@ -290,7 +343,7 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
                 X_transformed = dimensionality_reduction(X, y.ravel(), feat_extraction_method)
                 
                 # NOTE: to increase gap between classes, NCA transforms data into vector space of large continuous numbers
-                # hence, we have to center and normalize transformed data prior to embeddings computation
+                # hence, we have to center and normalize transformed data prior to embeddings computation to reduce range
                 for i in range(X_transformed.shape[1]):
                     mean, std = X_transformed[:, i].mean(), X_transformed[:, i].std()
                     X_transformed[:, i] -= mean
@@ -298,6 +351,8 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
                     
                 embeddings_task2.append(X_transformed[:n_words_task2, :])
                 embeddings_task3.append(X_transformed[n_words_task2:, :])
+                
+                print("{} embeddings computed".format(freq_domain.capitalize()))
                 
         embeddings[feat_extraction_method]['NR'] = np.hstack(embeddings_task2)
         embeddings[feat_extraction_method]['TSR'] = np.hstack(embeddings_task3)
@@ -349,21 +404,23 @@ def reshape_into_tensor_vis(eeg_data_all_sbjs, sent_lens_sbj):
 ### Helper functions for feature extraction on word level (with Random Forest or NCA) per EEG frequency domain and per Eye-Tracking feature across all subjects ###
 
 def eeg_freqs_across_sbj(task:str, freq_domain:str, merge:str, et_feature:str, n_features:str, held_out_indices=None, all_sbjs=True,
-                      duplicate_sents=None, dim_reduction=False, strategy='avg'):
+                      duplicate_sents=None, dim_reduction=False, split_sents=False, rel_indices=None, strategy='avg'):
     all_sbjs = False if dim_reduction else True
     #NOTE, to compute embeddings: n_features has to be 'most_important' for Random Forest 
-    #                             but 'all' for NCA as Random Forest is not a dimensionality reduction method
+    #                             but 'all' for NCA as Random Forest is not a dimensionality reduction method (i.e., feat extraction)
     #                             (hence, we have to index through most important channels to get most informative dims)
     if all_sbjs:
         eeg_feats_all_sbjs = [get_eeg_features(task=task, sbj=i, n_features=n_features, merge=merge, 
                                                held_out_indices=held_out_indices, duplicate_sents=duplicate_sents,
+                                               split_sents=split_sents, relation_indices=rel_indices,
                                                freq_domain=freq_domain, et_feat=et_feature, dim_reduction=dim_reduction) 
                                                for i in range(12)]
     else:
-        #NOTE: for dim reduction, we don't want all sbjs (would highly bias the data)
+        #NOTE: for dim reduction, we don't want all sbjs (would highly bias the data due to many missing values)
         sbjs_to_skip = [6, 11] if task == 'task2' else [3, 7, 11]
         eeg_feats_all_sbjs = [get_eeg_features(task=task, sbj=i, n_features=n_features, merge=merge, 
                                                held_out_indices=held_out_indices, duplicate_sents=duplicate_sents,
+                                               split_sents=split_sents, relation_indices=rel_indices,
                                                freq_domain=freq_domain, et_feat=et_feature, dim_reduction=dim_reduction) 
                                                for i in range(12) if i not in sbjs_to_skip]
     if dim_reduction:
