@@ -32,7 +32,7 @@ class VanillaBiLSTM(nn.Module):
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout_rate)
         
-        # multiply hidden dim of fully-connected linear layer by 2 since LSTM is bidirectional
+        # multiply hidden dim of fully-connected linear layer by 2 since LSTM is bidirectional (concat of forward and backward h states)
         hidden_dim = hidden_dim if self.task == 'binary' else hidden_dim * 2
         
         self.fc = nn.Linear(hidden_dim, output_size)
