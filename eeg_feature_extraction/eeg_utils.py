@@ -45,13 +45,12 @@ def get_held_out_sents(task:str):
     held_out_sents = [np.loadtxt(file, dtype=int).tolist() for file in files]
     return list(set(held_out_sents[0])) if task == 'task2' else list(set(held_out_sents[1]))
 
-def load_embeddings(classification:str):
-    path = os.getcwd() + '\\embeddings\\' if classification == 'binary' else os.getcwd() + '\\embeddings\\' + '\\embeddings_multi\\'
+def load_embeddings(classification:str, k = None):
+    subdir = '\\embeddings_binary\\' if classification == 'binary' else '\\embeddings_multi\\'
+    path = os.getcwd() + '\\embeddings\\' + subdir
+    path = path + '\\' + str(k) + '\\' if classification == 'binary' else path
     files = [os.path.join(path, file) for file in os.listdir(path)]
-    if classification == 'binary':
-        all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints') and not file.endswith('multi')]
-    else:
-        all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
+    all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
     return all_embeddings
 
 def get_rel_labels():
@@ -299,10 +298,11 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
             all features per frequency domain per Eye-Tracking feature or most important EEG features extracted through 
             Random Forest (not relevant for dim reduction through NCA) (str),
             k most important features to extract (int),
+            embeddings will be computed for a binary or multi-class classification objective (str)
        Return:
              cognitive word embeddings in EEG space for both feature extraction methods and both tasks respectively (dict)
     """
-    eeg_locs_all_freqs = get_eeg_locs('\\eeg_features_for_embeddings\\')
+    eeg_locs_all_freqs = get_eeg_locs('\\eeg_features_for_embeddings\\' + '\\' + str(k) + '\\')
     held_out_sents_task2, held_out_sents_task3 = get_held_out_sents('task2'), get_held_out_sents('task3')
     
     if classification == 'multiclass':
@@ -343,7 +343,7 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
             elif feat_extraction_method == 'NCA':
                 n_words_task2 = X_NR.shape[0]
                 X, y = np.vstack((X_NR, X_AR)), np.vstack((Y_NR, Y_AR))
-                X_transformed = dimensionality_reduction(X, y.ravel(), feat_extraction_method)
+                X_transformed = dimensionality_reduction(X, y.ravel(), feat_extraction_method, k = k)
                 
                 # NOTE: to increase gap between classes, NCA transforms data into vector space of large continuous numbers
                 # hence, we have to center and normalize transformed data prior to embeddings computation to reduce range
@@ -355,7 +355,7 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
                 embeddings_task2.append(X_transformed[:n_words_task2, :])
                 embeddings_task3.append(X_transformed[n_words_task2:, :])
                 
-                print("{} embeddings computed".format(freq_domain.capitalize()))
+            print("{} embeddings computed through {}".format(freq_domain.capitalize(), feat_extraction_method))
                 
         embeddings[feat_extraction_method]['NR'] = np.hstack(embeddings_task2)
         embeddings[feat_extraction_method]['TSR'] = np.hstack(embeddings_task3)

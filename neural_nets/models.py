@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
+from neural_nets.utils import *
 
 # torch.cuda.is_available() checks and returns a Boolean True if a GPU is available, else it'll return False
 is_cuda = torch.cuda.is_available()
@@ -65,7 +66,7 @@ class VanillaBiLSTM(nn.Module):
         return hidden
     
     
-def fit(model, criterion, optimizer, train_loader, val_loader, classification, epochs):
+def fit(model, criterion, optimizer, train_loader, val_loader, classification, epochs, batch_size, seq_length):
     counter = 0
     print_every = 10
     clip = 5
@@ -176,7 +177,7 @@ def predict(model, criterion, test_loader, classification, batch_size):
     
     test_loss = np.mean(test_losses)
     print("Test loss: {:.3f}".format(test_loss))
-    test_acc = num_correct/len(test_loader_rf_bi.dataset) if classification == 'binary' else np.mean(test_accs)
+    test_acc = num_correct/len(test_loader.dataset) if classification == 'binary' else np.mean(test_accs)
     print("Test accuracy: {:.3f}%".format(test_acc*100))
     test_f1 = np.mean(test_f1_scores)
     print("Test F1-score: {:.3f}%".format(test_f1*100))
