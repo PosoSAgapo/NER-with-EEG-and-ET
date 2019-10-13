@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier, NeighborhoodComponentsAnalysis
 from torch import nn
 
-### general helper functions ###
+### general helper functions for loading ###
 
 def get_matfiles(task:str, subdir = '\\results_zuco\\'):
     """
@@ -45,10 +45,9 @@ def get_held_out_sents(task:str):
     held_out_sents = [np.loadtxt(file, dtype=int).tolist() for file in files]
     return list(set(held_out_sents[0])) if task == 'task2' else list(set(held_out_sents[1]))
 
-def load_embeddings(classification:str, k = None):
+def load_embeddings(classification:str, k:int):
     subdir = '\\embeddings_binary\\' if classification == 'binary' else '\\embeddings_multi\\'
-    path = os.getcwd() + '\\embeddings\\' + subdir
-    path = path + '\\' + str(k) + '\\' if classification == 'binary' else path
+    path = os.getcwd() + '\\embeddings\\' + subdir + '\\' + str(k) + '\\'
     files = [os.path.join(path, file) for file in os.listdir(path)]
     all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
     return all_embeddings
@@ -297,7 +296,7 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
             merging / binning strategy of EEG frequencies (str),
             all features per frequency domain per Eye-Tracking feature or most important EEG features extracted through 
             Random Forest (not relevant for dim reduction through NCA) (str),
-            k most important features to extract (int),
+            k most important features to extract (int) -> k * 3 = embedding dimensionality,
             embeddings will be computed for a binary or multi-class classification objective (str)
        Return:
              cognitive word embeddings in EEG space for both feature extraction methods and both tasks respectively (dict)
