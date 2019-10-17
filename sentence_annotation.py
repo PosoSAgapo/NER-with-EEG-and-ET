@@ -57,15 +57,15 @@ def annotate_sentences(onto_word_level:list):
         Return:
             DataFrame with words and placeholders annotated with binary labels on sentence level (pd.DataFrame)
     """
-    important_labels = ['PERSON', 'LOC', 'ORG', 'MISC']
+    relevant_labels = ['PERSON', 'LOC', 'ORG', 'MISC']
     n_elements = len(onto_word_level)
     onto_all_sents, onto_all_labels = convert_to_sentence_level(onto_word_level)
     
     sent_labels = []
-    for onto_sent_labels in onto_all_labels:
+    for onto_word_labels in onto_all_labels:
         is_entity = False
-        for label in important_labels:
-            is_entity = True if label in onto_sent_labels else is_entity
+        for label in relevant_labels:
+            is_entity = True if label in onto_word_labels else is_entity
         if is_entity:
             sent_labels.append('+')
         else:
