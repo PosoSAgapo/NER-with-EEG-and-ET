@@ -18,7 +18,7 @@ def extract_ner_labels(ontonotes_file:str, word_idx=3, ner_idx=10):
     current_ner_label = ''
     with open(ontonotes_file, 'r', encoding = 'utf-8') as f:
         # skip header
-        for i, line in enumerate(islice(f, 1, None)):
+        for line in islice(f, 1, None):
             line = line.split()
             try:
                 word = line[word_idx]
@@ -55,16 +55,16 @@ def annotate_sentences(onto_word_level:list):
         Args:
             Ontonotes words and corresponding NER labels on word level (flattened list)
         Return:
-            DataFrame with words and placeholders (i.e., underscores) with prepended binary labels on sentence level (pd.DataFrame)
+            DataFrame with words and placeholders annotated with binary labels on sentence level (pd.DataFrame)
     """
-    relevant_labels = ['PERSON', 'LOC', 'ORG', 'MISC']
+    important_labels = ['PERSON', 'LOC', 'ORG', 'MISC']
     n_elements = len(onto_word_level)
     onto_all_sents, onto_all_labels = convert_to_sentence_level(onto_word_level)
     
     sent_labels = []
     for onto_sent_labels in onto_all_labels:
         is_entity = False
-        for label in relevant_labels:
+        for label in important_labels:
             is_entity = True if label in onto_sent_labels else is_entity
         if is_entity:
             sent_labels.append('+')
@@ -81,5 +81,4 @@ def annotate_sentences(onto_word_level:list):
         df.iloc[cum_idx+1:cum_idx+sent_len, 1] = '_' #['_' for _ in range(sent_len)]
         df.iloc[cum_idx+sent_len, 1] = ''
         cum_idx += sent_len + 1
-        
     return df
