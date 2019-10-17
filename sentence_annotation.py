@@ -73,7 +73,7 @@ def annotate_sentences(onto_word_level:list):
     
     df = pd.DataFrame(index = range(n_elements+len(sent_labels)), columns = ['word', 'placeholder'])
     cum_idx = 0
-    for sent_label, sent in zip(sent_labels, onto_all_sents):
+    for i, (sent_label, sent) in enumerate(zip(sent_labels, onto_all_sents)):
         sent_len = len(sent)
         df.iloc[cum_idx, 0] = sent_label
         df.iloc[cum_idx, 1] = ''
@@ -81,4 +81,7 @@ def annotate_sentences(onto_word_level:list):
         df.iloc[cum_idx+1:cum_idx+sent_len, 1] = '_' #['_' for _ in range(sent_len)]
         df.iloc[cum_idx+sent_len, 1] = ''
         cum_idx += sent_len + 1
+        if i > 0 and i % 5000 == 0:
+            print('{} sentences processed...'.format(i))
+    print('Sentence annotation finished!')
     return df
