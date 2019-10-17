@@ -115,3 +115,4 @@ ontonotes_data/test.english.jsonlines
 ontonotes_data/test.english.v4_gold_conll
 ontonotes_data/train.english.jsonlines
 ontonotes_data/train.english.v4_gold_conll
+.ipynb_checkpoints/compute_attention_scores-checkpoint.ipynb
