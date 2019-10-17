@@ -13,6 +13,9 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier, NeighborhoodComponentsAnalysis
 from torch import nn
 
+from bootstrap_code.bootstrap_routines import *
+from utils import *
+
 ### general helper functions for loading ###
 
 def get_matfiles(task:str, subdir = '\\results_zuco\\'):
@@ -361,7 +364,33 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
                 
     return embeddings
 
-### Helper functions to visualise EEG data ###
+### Helper functions to visualise EEG data and perform statistical analyses ###
+
+def compute_differences(eeg_feats_nr: np.ndarray, eeg_feats_tsr: np.ndarray, all_electrodes: np.ndarray):
+    """
+        Args:
+            EEG feature matrix with all electrodes for a single frequency band (n_words x 105) - NR (np.array)
+            EEG feature matrix with all electrodes for a single frequency band (n_words x 105) - TSR (np.array)
+            NumPy array with electrode labels - necessary for mapping (np.array)
+        Return:
+            95% CI differences in electrode power spectra between the reading tasks sorded in descending order (np.array)
+    """
+    assert eeg_feats_nr.shape[1] == eeg_feats_tsr.shape[1]
+    M = eeg_feats_nr.shape[1]
+    tsr_indices, nr_indices  = [], []
+    bootci_differences = np.zeros(M, dtype=float)
+    for i in range(M):
+        # compute bootstrapping per feature (i.e., electrode)
+        ci_diff = bootci_diff(eeg_feats_nr[:, i], eeg_feats_tsr[:, i], nboot = 2000)
+        p_val = bootpv(eeg_feats_nr[:, i], eeg_feats_tsr[:, i], nboot = 2000, printout=False)
+        if ci_diff[0] < float(0) and p_val < 1e-2:
+            tsr_indices.append(i)
+        elif ci_diff[0] > float(0) and p_val < 1e-2:
+            nr_indices.append(i)
+        bootci_differences[i] += abs(ci_diff[0])
+    # sort differences in electrode power spectra between the two reading tasks in descending order
+    sorted_differences = np.argsort(bootci_differences)[::-1]
+    return all_electrodes[sorted_differences], all_electrodes[tsr_indices], all_electrodes[nr_indices]
 
 def extract_electrodes_and_indices(eeg_electrodes:np.ndarray, eeg_locs:np.ndarray, electrodes_freq:list, k=0):
     all_electrodes_per_freq = eeg_electrodes[eeg_locs]

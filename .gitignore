@@ -104,3 +104,14 @@ task_materials/ner_labels_normal_reading.tsv
 *.pyc
 .ipynb_checkpoints/task_prediction-checkpoint.ipynb
 state_dict.pt
+*.csv
+.ipynb_checkpoints/compute_attention_weights-checkpoint.ipynb
+.ipynb_checkpoints/extract_ontonotes_labels-checkpoint.ipynb
+*.pdf
+*.pptx
+ontonotes_data/dev.english.jsonlines
+ontonotes_data/dev.english.v4_gold_conll
+ontonotes_data/test.english.jsonlines
+ontonotes_data/test.english.v4_gold_conll
+ontonotes_data/train.english.jsonlines
+ontonotes_data/train.english.v4_gold_conll

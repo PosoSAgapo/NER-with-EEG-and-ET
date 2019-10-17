@@ -134,7 +134,7 @@ def bootpv(data1, data2, stat=np.mean, func=np.subtract, nboot=10000,
     # Ensure that our data are 1D arrays
     data1, data2 = np.ravel(data1), np.ravel(data2)
 
-    # Mesure the difference of the statistic between the two groups
+    # Measure the difference of the statistic between the two groups
     diff_groups = func(stat(data1), stat(data2))
 
     # Size of the two samples
@@ -169,6 +169,8 @@ def bootpv(data1, data2, stat=np.mean, func=np.subtract, nboot=10000,
         pvalue = np.sum(param_func <= diff_groups)/float(nboot)
     elif diff_groups > 0:
         pvalue = np.sum(param_func >= diff_groups)/float(nboot)
+    else:
+        pvalue = float(1)
     
     if printout == True:
         sign = "greater than or equal to"
