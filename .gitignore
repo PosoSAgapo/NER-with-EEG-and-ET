@@ -117,3 +117,6 @@ ontonotes_data/train.english.jsonlines
 ontonotes_data/train.english.v4_gold_conll
 .ipynb_checkpoints/compute_attention_scores-checkpoint.ipynb
 *.tsv
+PAPER/ACL files/anthology.bib
+PAPER/ACL files/anthology.bib.gz
+res/embeddings/glove.6B.300d.txt.zip
