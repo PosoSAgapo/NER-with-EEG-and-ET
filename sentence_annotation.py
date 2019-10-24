@@ -7,12 +7,12 @@ from itertools import islice
 
 def extract_ner_labels(ontonotes_file:str, word_idx=3, ner_idx=10):
     """
-        Args: 
-            file with ontonotes data (train, dev, or test) in CoNLL format (str),
-            word index in each row (int),
-            NER label index in each row (int)
-        Return:
-            list of tuples, where each tuple is (word, label) (number of rows is the same as in orig file)
+    Args: 
+        file with ontonotes data (train, dev, or test) in CoNLL format (str),
+        word index in each row (int),
+        NER label index in each row (int)
+    Return:
+        list of tuples, where each tuple is (word, label) (number of rows is the same as in orig file)
     """
     onto_word_labels = []
     current_ner_label = ''
@@ -34,10 +34,10 @@ def extract_ner_labels(ontonotes_file:str, word_idx=3, ner_idx=10):
 
 def convert_to_sentence_level(onto_word_level:list):
     """
-        Args:
-            Ontonotes words and corresponding NER labels on word level (flattened list)
-        Return:
-            Ontonotes words and corresponding NER labels chunked into sentences (nested list, nested list)
+    Args:
+        Ontonotes words and corresponding NER labels on word level (flattened list)
+    Return:
+        Ontonotes words and corresponding NER labels chunked into sentences (nested list, nested list)
     """
     onto_sents, onto_labels = [], []
     cum_sentlen = 0
@@ -52,12 +52,12 @@ def convert_to_sentence_level(onto_word_level:list):
 
 def annotate_sentences(onto_word_level:list):
     """
-        Args:
-            Ontonotes words and corresponding NER labels on word level (flattened list)
-        Return:
-            DataFrame with words and placeholders annotated with binary labels on sentence level (pd.DataFrame)
+    Args:
+        Ontonotes words and corresponding NER labels on word level (flattened list)
+    Return:
+        DataFrame with words and placeholders annotated with binary labels on sentence level (pd.DataFrame)
     """
-    relevant_labels = ['PERSON', 'LOC', 'ORG', 'MISC']
+    relevant_labels = ['PERSON', 'LOC', 'ORG', 'MISC'] #CoNLL 2003 NER labels
     n_elements = len(onto_word_level)
     onto_all_sents, onto_all_labels = convert_to_sentence_level(onto_word_level)
     
