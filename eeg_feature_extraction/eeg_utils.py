@@ -239,14 +239,14 @@ def get_eeg_features(task:str, sbj:int, n_features:str, merge:str, duplicate_sen
 
 ### Helper functions to compute embeddings and reshape EEG data into tensor ###
 
-def reshape_into_tensor(eeg_data_per_task:np.ndarray, task:str):
-    """
-    Transforms EEG data matrix into 3D sequence tensor
-        Args:
-            word embeddings per task (numpy matrix of size N (number of words) x D (embedding dim)),
-            task (str)
-        Return:
-              reshaped word embeddings (tensors of size N (number of sents) x T (sequence length per task) x D (embedding dim))
+def reshape_into_tensor(eeg_data_per_task:np.ndarray, task:str, strategy='truncating'):
+    """Transforms EEG data matrix into 3D sequence tensor
+    Args:
+        word embeddings per task (NumPy matrix of size N (number of words) x D (embedding dim)),
+        task (str),
+        sequence padding strategy (str) - must be one of ['padding', 'truncating']
+    Return:
+          reshaped word embeddings (tensors of size N (number of sents) x T (sequence length per task) x D (embedding dim))
     """
     held_out_indices_task2 = get_held_out_sents('task2')
     held_out_indices_task3 = get_held_out_sents('task3')
@@ -257,21 +257,24 @@ def reshape_into_tensor(eeg_data_per_task:np.ndarray, task:str):
     
     assert eeg_data_per_task.shape[0] == sum(sent_lens_current_task), 'n_rows in matrix must be equal to the n_words_total in task'
     
-    sent_mean_len_task2 = round(np.mean(sent_lens_task2))
-    sent_mean_len_task3 = round(np.mean(sent_lens_task3))
+    sent_mean_len_task2, sent_max_len_task2 = round(np.mean(sent_lens_task2)), round(np.max(sent_lens_task2))
+    sent_mean_len_task3, sent_max_len_task3 = round(np.mean(sent_lens_task3)), round(np.max(sent_lens_task3))
     mean_len = np.min((sent_mean_len_task2, sent_mean_len_task3))
     mean_len = torch.tensor(mean_len).long().item()
+    max_len = np.max((sent_max_len_task2, sent_max_len_task2))
+    max_len = torch.tensor(max_len).long().item()
     
     embed_dim = eeg_data_per_task.shape[1]
-    max_len, n_sents = np.max(sent_lens_current_task), len(sent_lens_current_task)
-    eeg_seq_tensor = torch.zeros(n_sents, max_len, embed_dim, dtype = torch.double)
+    n_sents = len(sent_lens_current_task)
+    eeg_seq_tensor = torch.zeros(n_sents, max_len, embed_dim, dtype=torch.double)
     # cumulative sentence length
     cum_sent_len = 0
     for i, sent_len in enumerate(sent_lens_current_task):
         eeg_seq_tensor[i, :sent_len, :] += torch.from_numpy(eeg_data_per_task[cum_sent_len:cum_sent_len+sent_len, :])
         cum_sent_len += sent_len
-    # truncate sequences at mean sentence length per task
-    eeg_seq_tensor = eeg_seq_tensor[:, :mean_len, :]
+    # truncate sequences at mean sentence length ('truncating') or zero-pad sequences until max sentence length ('padding')
+    truncate = mean_len if strategy == 'truncating' else max_len
+    eeg_seq_tensor = eeg_seq_tensor[:, :truncate, :]
     return eeg_seq_tensor
 
 def create_multiclass_word_labels(indices_rel_task:list, indices_no_rel_task:list, task:str):

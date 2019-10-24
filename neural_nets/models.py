@@ -46,6 +46,7 @@ class VanillaBiLSTM(nn.Module):
         x = x.double()
         lstm_out, hidden = self.lstm(x, hidden)
         if self.task == 'binary':
+            # reshape 3D tensor into 2D matrix for fully-connected linear layer
             lstm_out = lstm_out.contiguous().view(-1, self.hidden_dim)
         out = self.dropout(self.relu(lstm_out))
         out = self.fc(out)
@@ -66,10 +67,9 @@ class VanillaBiLSTM(nn.Module):
         return hidden
     
     
-def fit(model, criterion, optimizer, train_loader, val_loader, classification, epochs, batch_size, seq_length):
+def fit(model, criterion, optimizer, train_loader, val_loader, classification, epochs, batch_size, seq_length, clip=5):
     counter = 0
     print_every = 10
-    clip = 5
     valid_loss_min = np.Inf
     model.train()
     train_losses, train_accs, train_f1_scores = [], [], []
@@ -90,7 +90,7 @@ def fit(model, criterion, optimizer, train_loader, val_loader, classification, e
                 loss = criterion(output.squeeze(), labels)
                 train_losses_epoch.append(loss.item())
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), clip)
+                nn.utils.clip_grad_norm_(model.parameters(), clip) # gradient clipping
                 optimizer.step()
 
                 train_acc = accuracy(output.squeeze(), labels, task = classification)

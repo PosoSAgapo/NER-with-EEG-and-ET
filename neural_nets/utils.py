@@ -8,8 +8,10 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
+import torch.nn.functional as F
 
-def loss_func(classification:str, weight=None): return nn.BCELoss() if classification == 'binary' else nn.CrossEntropyLoss(weight)
+def loss_func(classification:str, weight=None, mask_index=-100): 
+    return nn.BCELoss(ignore_index=mask_index) if classification == 'binary' else nn.CrossEntropyLoss(weight, ignore_index=mask_index)
 
 def get_optim(model, lr:float):
     return torch.optim.Adam(model.parameters(), lr=lr)
