@@ -1,3 +1,4 @@
+__all__ = ['VanillaBiLSTM', 'fit', 'predict']
 import numpy as np
 import torch.nn.functional as F
 import torch
@@ -8,15 +9,15 @@ from torch.utils.data import DataLoader, TensorDataset
 from neural_nets.utils import *
 
 # torch.cuda.is_available() checks and returns a Boolean True if a GPU is available, else it'll return False
-is_cuda = torch.cuda.is_available()
+#is_cuda = torch.cuda.is_available()
 
 # If we have a GPU available, we'll set our device to GPU. We'll use this device variable later in our code.
-if is_cuda:
-    device = torch.device("cuda")
-    print("GPU is available")
-else:
-    device = torch.device("cpu")
-    print("GPU not available, CPU used")
+#if is_cuda:
+#    device = torch.device("cuda")
+#    print("GPU is available")
+#else:
+device = torch.device("cpu")
+    #print("GPU not available, CPU used")
     
 class VanillaBiLSTM(nn.Module):
     
@@ -165,6 +166,8 @@ def predict(model, criterion, test_loader, classification, batch_size):
         test_losses.append(test_loss.item())
         if classification == 'binary':
             pred = torch.round(output.squeeze())   # Rounds the output to 0/1
+            preds.append(pred)
+            true_labels.append(labels)
             correct_tensor = pred.eq(labels.view_as(pred))
             correct = np.squeeze(correct_tensor.cpu().numpy())
             num_correct += np.sum(correct)

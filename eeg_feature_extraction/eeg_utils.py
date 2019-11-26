@@ -48,8 +48,8 @@ def get_held_out_sents(task:str):
     held_out_sents = [np.loadtxt(file, dtype=int).tolist() for file in files]
     return list(set(held_out_sents[0])) if task == 'task2' else list(set(held_out_sents[1]))
 
-def load_embeddings(classification:str, k:int):
-    subdir = '\\embeddings_binary\\' if classification == 'binary' else '\\embeddings_multi\\'
+def load_embeddings(classification:str, k:int, task:str=''):
+    subdir = '\\embeddings_binary\\' + task if classification == 'binary' else '\\embeddings_multi\\'
     path = os.getcwd() + '\\embeddings\\' + subdir + '\\' + str(k) + '\\'
     files = [os.path.join(path, file) for file in os.listdir(path)]
     all_embeddings = [np.loadtxt(file) for file in files if not file.endswith('.ipynb_checkpoints')]
@@ -251,19 +251,26 @@ def reshape_into_tensor(eeg_data_per_task:np.ndarray, task:str, strategy='trunca
     held_out_indices_task2 = get_held_out_sents('task2')
     held_out_indices_task3 = get_held_out_sents('task3')
     
+    sent_lens_task1 = get_sent_lens_per_task('task1', list())
     sent_lens_task2 = get_sent_lens_per_task('task2', held_out_indices_task2)
     sent_lens_task3 = get_sent_lens_per_task('task3', held_out_indices_task3)
-    sent_lens_current_task = sent_lens_task2 if task == 'task2' else sent_lens_task3
+    
+    if task == 'task1':
+        sent_lens_current_task = sent_lens_task1
+        sent_mean_len_task1, sent_max_len_task1 = round(np.mean(sent_lens_task1)), round(np.max(sent_lens_task1))
+        mean_len = torch.tensor(sent_mean_len_task1).long().item()
+        max_len = torch.tensor(sent_max_len_task1).long().item()        
+    else:
+        sent_lens_current_task = sent_lens_task2 if task == 'task2' else sent_lens_task3
+        sent_mean_len_task2, sent_max_len_task2 = round(np.mean(sent_lens_task2)), round(np.max(sent_lens_task2))
+        sent_mean_len_task3, sent_max_len_task3 = round(np.mean(sent_lens_task3)), round(np.max(sent_lens_task3))
+        mean_len = np.min((sent_mean_len_task2, sent_mean_len_task3))
+        mean_len = torch.tensor(mean_len).long().item()
+        max_len = np.max((sent_max_len_task2, sent_max_len_task2))
+        max_len = torch.tensor(max_len).long().item()
     
     assert eeg_data_per_task.shape[0] == sum(sent_lens_current_task), 'n_rows in matrix must be equal to the n_words_total in task'
-    
-    sent_mean_len_task2, sent_max_len_task2 = round(np.mean(sent_lens_task2)), round(np.max(sent_lens_task2))
-    sent_mean_len_task3, sent_max_len_task3 = round(np.mean(sent_lens_task3)), round(np.max(sent_lens_task3))
-    mean_len = np.min((sent_mean_len_task2, sent_mean_len_task3))
-    mean_len = torch.tensor(mean_len).long().item()
-    max_len = np.max((sent_max_len_task2, sent_max_len_task2))
-    max_len = torch.tensor(max_len).long().item()
-    
+
     embed_dim = eeg_data_per_task.shape[1]
     n_sents = len(sent_lens_current_task)
     eeg_seq_tensor = torch.zeros(n_sents, max_len, embed_dim, dtype=torch.double)
@@ -293,8 +300,8 @@ def create_multiclass_word_labels(indices_rel_task:list, indices_no_rel_task:lis
                     j += 1
     return labels
 
-def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 'avg', n_features = 'all', k = 15,
-                       classification = 'binary'):
+def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge:str='avg', n_features:str='all', k:int=15,
+                       classification:str='binary', task:str=''):
     """
         Args:
             feature extraction methods (i.e., Random Forest or NCA) (list),
@@ -307,16 +314,17 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
        Return:
              cognitive word embeddings in EEG space for both feature extraction methods and both tasks respectively (dict)
     """
-    eeg_locs_all_freqs = get_eeg_locs('\\eeg_features_for_embeddings\\' + '\\' + str(k) + '\\')
-    held_out_sents_task2, held_out_sents_task3 = get_held_out_sents('task2'), get_held_out_sents('task3')
+    eeg_locs_all_freqs = get_eeg_locs('\\eeg_features_for_embeddings\\' + task + '\\' + str(k) + '\\')
     
-    if classification == 'multiclass':
-        indices_relations_task2, indices_no_relations_task2, indices_relations_task3, indices_no_relations_task3 = get_rel_labels()
-        # get indices for (dev) sentences with and without relations respectively
-        indices_rel_task2 = [idx for idx in indices_relations_task2 if idx not in held_out_sents_task2]
-        indices_no_rel_task2 = [idx for idx in indices_no_relations_task2 if idx not in held_out_sents_task2]
-        indices_rel_task3 = [idx for idx in indices_relations_task3 if idx not in held_out_sents_task3]
-        indices_no_rel_task3 = [idx for idx in indices_no_relations_task3 if idx not in held_out_sents_task3]
+    if task != 'task_1':
+        held_out_sents_task2, held_out_sents_task3 = get_held_out_sents('task2'), get_held_out_sents('task3')
+        if classification == 'multiclass':
+            indices_relations_task2, indices_no_relations_task2, indices_relations_task3, indices_no_relations_task3 = get_rel_labels()
+            # get indices for (dev) sentences with and without relations respectively
+            indices_rel_task2 = [idx for idx in indices_relations_task2 if idx not in held_out_sents_task2]
+            indices_no_rel_task2 = [idx for idx in indices_no_relations_task2 if idx not in held_out_sents_task2]
+            indices_rel_task3 = [idx for idx in indices_relations_task3 if idx not in held_out_sents_task3]
+            indices_no_rel_task3 = [idx for idx in indices_no_relations_task3 if idx not in held_out_sents_task3]
         
     et_feature = 'TRT'
     rnd_state = 42
@@ -327,12 +335,20 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
         embeddings_task2, embeddings_task3 = [], []
         for idx, freq_domain in enumerate(freq_domains):
             
-            X_NR = eeg_freqs_across_sbj('task2', freq_domain, merge, et_feature, n_features,
-                                      held_out_indices=held_out_sents_task2, all_sbjs=False,
-                                      dim_reduction=True)
-            X_AR = eeg_freqs_across_sbj('task3', freq_domain, merge, et_feature, n_features,
-                                      held_out_indices=held_out_sents_task3, all_sbjs=False,
-                                      dim_reduction=True)
+            if task == 'task_1':
+                mean_freqs_task_1 = eeg_freqs_across_sbj('task1', freq_domain, merge, et_feature, n_features,
+                                                         all_sbjs=False, dim_reduction=True)
+                n_words = mean_freqs_task_1.shape[0]
+                X_NR = mean_freqs_task_1[:n_words//2, :]
+                X_AR = mean_freqs_task_1[n_words//2:, :]
+                
+            else:
+                X_NR = eeg_freqs_across_sbj('task2', freq_domain, merge, et_feature, n_features,
+                                          held_out_indices=held_out_sents_task2, all_sbjs=False,
+                                          dim_reduction=True)
+                X_AR = eeg_freqs_across_sbj('task3', freq_domain, merge, et_feature, n_features,
+                                          held_out_indices=held_out_sents_task3, all_sbjs=False,
+                                          dim_reduction=True)
             
             if classification == 'multiclass':
                 Y_NR = create_multiclass_word_labels(indices_rel_task2, indices_no_rel_task2, 'task2')
@@ -361,9 +377,13 @@ def compute_embeddings(feat_extraction_methods:list, freq_domains:list, merge = 
                 embeddings_task3.append(X_transformed[n_words_task2:, :])
                 
             print("{} embeddings computed through {}".format(freq_domain.capitalize(), feat_extraction_method))
-                
-        embeddings[feat_extraction_method]['NR'] = np.hstack(embeddings_task2)
-        embeddings[feat_extraction_method]['TSR'] = np.hstack(embeddings_task3)
+        
+        if task == 'task_1':
+            embeddings[feat_extraction_method]['Task_1_1'] = np.hstack(embeddings_task2)
+            embeddings[feat_extraction_method]['Task_1_2'] = np.hstack(embeddings_task3)
+        else:
+            embeddings[feat_extraction_method]['NR'] = np.hstack(embeddings_task2)
+            embeddings[feat_extraction_method]['TSR'] = np.hstack(embeddings_task3)
                 
     return embeddings
 

@@ -274,7 +274,6 @@ class DataTransformer:
                 pop_idx += 1
         return features
     
-    
 def split_data(sbjs): 
     """
         Args: Data per sbj on sentence level for task 1
